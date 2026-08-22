@@ -56,7 +56,7 @@ P0가 끝나기 전에는 P1/P2 기능을 시작하지 않는다.
 ## 6. 목표 아키텍처
 
 - 프런트엔드: React + TypeScript + Vite
-- 백엔드: Python 3.12 + FastAPI
+- 백엔드: Python 3.11 + FastAPI (3.10은 agent-framework-github-copilot와 비호환)
 - AI: `github-copilot-sdk` + `agent-framework-github-copilot`
 - 모델 연결: GitHub Copilot SDK의 Microsoft Foundry BYOK 구성
 - 인증: 로컬은 Azure CLI, Azure는 System-assigned Managed Identity

@@ -1,0 +1,15 @@
+# Azure Developer CLI (azd) definition for 디딤하트(DidimHeart).
+# The live judging deployment is produced with `az containerapp up --source .`
+# (cloud-side ACR build, since Docker is not available locally). This file
+# documents the reproducible azd path and the container build context.
+name: didimheart
+metadata:
+  template: didimheart@1.0.0
+services:
+  web:
+    project: .
+    language: docker
+    host: containerapp
+    docker:
+      path: ./Dockerfile
+      context: .
