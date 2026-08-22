@@ -17,6 +17,7 @@ def test_deploy_job_requires_azure_repository_variables():
     assert isinstance(deploy_if, str)
     normalized_if = " ".join(deploy_if.split())
 
+    assert "github.event_name != 'pull_request'" in normalized_if
     assert "github.ref == 'refs/heads/main'" in normalized_if
     assert "vars.AZURE_CLIENT_ID != ''" in normalized_if
     assert "vars.AZURE_TENANT_ID != ''" in normalized_if
