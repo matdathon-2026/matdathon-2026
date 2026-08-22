@@ -76,7 +76,14 @@ jobs:
 
   deploy:
     name: Deploy to Azure
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: >-
+      github.event_name != 'pull_request' &&
+      github.ref == 'refs/heads/main' &&
+      vars.AZURE_CLIENT_ID != '' &&
+      vars.AZURE_TENANT_ID != '' &&
+      vars.AZURE_SUBSCRIPTION_ID != '' &&
+      vars.AZURE_ENV_NAME != '' &&
+      vars.AZURE_LOCATION != ''
     needs: [backend, web, infra]
     runs-on: ubuntu-latest
     concurrency:
