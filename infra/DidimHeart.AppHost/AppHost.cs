@@ -20,9 +20,10 @@ var ingestCron = builder.Configuration["IngestCron"] ?? "0 18 * * *";
 // No 온통청년 key has been issued yet, so the ingestion job falls back to the
 // repository snapshot. The placeholder keeps `azd provision` non-interactive;
 // a real key is supplied with `azd env set YouthCenterApiKey <key>`.
+var configuredYouthCenterApiKey = builder.Configuration["YouthCenterApiKey"];
 var youthCenterApiKey = builder.AddParameter(
     "youthCenterApiKey",
-    builder.Configuration["YouthCenterApiKey"] ?? "unset",
+    configuredYouthCenterApiKey ?? "unset",
     publishValueAsDefault: true);
 
 // Container image for both workloads.
@@ -125,6 +126,9 @@ var ingest = builder
     .WithEnvironment("INGEST_ARCHIVE_ACCOUNT_URL", storage.Resource.BlobEndpoint)
     .WithEnvironment("INGEST_ARCHIVE_CONTAINER", "raw-benefits")
     .WithEnvironment("YOUTHCENTER_API_KEY", youthCenterApiKey)
+    .WithEnvironment(
+        "YOUTHCENTER_ENABLED",
+        string.IsNullOrWhiteSpace(configuredYouthCenterApiKey) ? "false" : "true")
     .PublishAsScheduledAzureContainerAppJob(ingestCron, (infra, job) =>
     {
         AttachRegistry(infra, job.Identity, job.Configuration.Registries);

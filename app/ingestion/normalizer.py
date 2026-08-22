@@ -25,8 +25,8 @@ CURATOR_INSTRUCTIONS = """\
 {
   "title": "지원사업 이름",
   "provider": "주관 기관",
-  "category": "생활|주거|교육|취업|의료|금융|심리 중 하나",
-  "regions": ["ALL" 또는 시도명 배열"],
+  "category": "living|housing|education|employment|finance|mental_health 중 하나",
+  "regions": ["ALL" 또는 seoul|busan|daegu|incheon|gwangju|daejeon|ulsan|sejong|gyeonggi|gangwon|chungbuk|chungnam|jeonbuk|jeonnam|gyeongbuk|gyeongnam|jeju 배열"],
   "age": {"min": 정수 또는 null, "max": 정수 또는 null},
   "eligibilityText": "지원 대상 요약",
   "benefitText": "지원 내용 요약",

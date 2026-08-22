@@ -1,95 +1,119 @@
 import type {
-  Profile,
-  RecommendationsResponse,
+  BenefitDetail,
+  CompleteResult,
+  Impact,
+  Ledger,
   Plan,
-  CompleteStepResponse,
-  HeartsResponse,
-  ImpactResponse,
-  BenefitsResponse,
-  ApiError,
-} from './types';
+  PlanDraft,
+  ProfileInput,
+  RecommendationResponse,
+  Session,
+} from "./types";
 
-class ApiCallError extends Error {
+const BASE = "/api/v1";
+
+export class ApiError extends Error {
   code: string;
-  constructor(message: string, code: string) {
+  status: number;
+  retryable: boolean;
+  constructor(code: string, message: string, status: number, retryable = false) {
     super(message);
     this.code = code;
-    this.name = 'ApiCallError';
+    this.status = status;
+    this.retryable = retryable;
   }
 }
 
-async function handleResponse<T>(res: Response): Promise<T> {
+async function req<T>(path: string, init?: RequestInit): Promise<T> {
+  let res: Response;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 120_000);
+  try {
+    res = await fetch(path, {
+      ...init,
+      signal: controller.signal,
+      headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
+    });
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") {
+      throw new ApiError(
+        "TIMEOUT",
+        "응답이 너무 오래 걸려요. 잠시 후 다시 시도해 주세요.",
+        0,
+        true,
+      );
+    }
+    throw new ApiError("NETWORK", "네트워크 연결에 문제가 있어요. 잠시 후 다시 시도해 주세요.", 0, true);
+  } finally {
+    clearTimeout(timer);
+  }
   if (!res.ok) {
-    let code = 'UNKNOWN_ERROR';
-    let message = `서버 오류가 발생했어요 (${res.status})`;
+    let code = "ERROR";
+    let message = "요청을 처리하지 못했어요.";
+    let retryable = false;
     try {
-      const body = await res.json() as { error: ApiError };
+      const body = await res.json();
       if (body?.error) {
-        code = body.error.code;
-        message = body.error.message;
+        code = body.error.code ?? code;
+        message = body.error.message ?? message;
+        retryable = !!body.error.retryable;
       }
     } catch {
-      // use defaults
+      /* ignore parse failure */
     }
-    throw new ApiCallError(message, code);
+    throw new ApiError(code, message, res.status, retryable);
   }
-  return res.json() as Promise<T>;
+  if (res.status === 204) return undefined as T;
+  return (await res.json()) as T;
 }
 
-export async function fetchRecommendations(
-  sessionId: string | null,
-  profile: Profile,
-  signal: AbortSignal,
-): Promise<RecommendationsResponse> {
-  const res = await fetch('/api/recommendations', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId, profile }),
-    signal,
-  });
-  return handleResponse<RecommendationsResponse>(res);
-}
-
-export async function fetchPlan(
-  sessionId: string,
-  benefitId: string,
-  signal: AbortSignal,
-): Promise<Plan> {
-  const res = await fetch('/api/plans', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId, benefitId }),
-    signal,
-  });
-  return handleResponse<Plan>(res);
-}
-
-export async function completeStep(
-  planId: string,
-  stepId: string,
-  sessionId: string,
-): Promise<CompleteStepResponse> {
-  const res = await fetch(`/api/plans/${planId}/steps/${stepId}/complete`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId }),
-  });
-  return handleResponse<CompleteStepResponse>(res);
-}
-
-export async function fetchHearts(sessionId: string): Promise<HeartsResponse> {
-  const res = await fetch(`/api/hearts?sessionId=${encodeURIComponent(sessionId)}`);
-  return handleResponse<HeartsResponse>(res);
-}
-
-export async function fetchImpact(sessionId: string): Promise<ImpactResponse> {
-  const res = await fetch(`/api/impact?sessionId=${encodeURIComponent(sessionId)}`);
-  return handleResponse<ImpactResponse>(res);
-}
-
-export async function fetchBenefits(): Promise<BenefitsResponse> {
-  const res = await fetch('/api/benefits');
-  return handleResponse<BenefitsResponse>(res);
-}
-
-export { ApiCallError };
+export const api = {
+  createSession: () => req<Session>(`${BASE}/demo-sessions`, { method: "POST" }),
+  saveProfile: (sessionId: string, profile: ProfileInput) =>
+    req<Session>(`${BASE}/demo-sessions/${sessionId}/profile`, {
+      method: "PUT",
+      body: JSON.stringify(profile),
+    }),
+  recommend: (sessionId: string) =>
+    req<RecommendationResponse>(`${BASE}/recommendations`, {
+      method: "POST",
+      body: JSON.stringify({ sessionId }),
+    }),
+  benefit: (id: string) => req<BenefitDetail>(`${BASE}/benefits/${id}`),
+  compare: (benefitIds: string[], sessionId?: string) =>
+    req<{ rows: Record<string, unknown>[] }>(`${BASE}/benefits/compare`, {
+      method: "POST",
+      body: JSON.stringify({ benefitIds, sessionId }),
+    }),
+  draftPlan: (sessionId: string, benefitId: string) =>
+    req<PlanDraft>(`${BASE}/plans/draft`, {
+      method: "POST",
+      body: JSON.stringify({ sessionId, benefitId }),
+    }),
+  savePlan: (body: {
+    sessionId: string;
+    benefitId: string;
+    title: string;
+    deadline?: string | null;
+    requiredDocuments: string[];
+    steps: PlanDraft["steps"];
+    uncertainties: string[];
+    sourceUrl: string;
+    applyUrl: string;
+  }) => req<Plan>(`${BASE}/plans`, { method: "POST", body: JSON.stringify(body) }),
+  listPlans: (sessionId: string) =>
+    req<Plan[]>(`${BASE}/plans?sessionId=${encodeURIComponent(sessionId)}`),
+  completeStep: (planId: string, stepId: string, sessionId: string) =>
+    req<CompleteResult>(`${BASE}/plans/${planId}/steps/${stepId}/complete`, {
+      method: "POST",
+      body: JSON.stringify({ sessionId }),
+    }),
+  reopenStep: (planId: string, stepId: string, sessionId: string) =>
+    req<{ plan: Plan; reversal: unknown }>(
+      `${BASE}/plans/${planId}/steps/${stepId}/reopen`,
+      { method: "POST", body: JSON.stringify({ sessionId }) },
+    ),
+  ledger: (sessionId: string) =>
+    req<Ledger>(`${BASE}/hearts/ledger?sessionId=${encodeURIComponent(sessionId)}`),
+  impact: () => req<Impact>(`${BASE}/impact`),
+};

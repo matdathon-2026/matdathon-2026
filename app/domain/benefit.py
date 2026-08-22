@@ -13,7 +13,14 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
-BenefitCategory = Literal["생활", "주거", "교육", "취업", "의료", "금융", "심리"]
+BenefitCategory = Literal[
+    "housing",
+    "employment",
+    "education",
+    "finance",
+    "living",
+    "mental_health",
+]
 BenefitStatus = Literal["active", "review_needed", "stale", "archived"]
 FitLevel = Literal["high", "medium", "low"]
 

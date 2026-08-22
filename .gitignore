@@ -2,23 +2,45 @@
 .venv/
 __pycache__/
 *.py[cod]
+*.egg-info/
 .pytest_cache/
-.ruff_cache/
-.env
+.mypy_cache/
+data/*.local.json
+*.local.db
 
-# Node
-node_modules/
+# Copilot runtime (downloaded/bundled, not committed)
+.copilot-runtime/
+
+# Node / frontend
+web/node_modules/
 web/dist/
+node_modules/
+dist/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# Azure / azd
+.azure/
 
 # .NET / Aspire
 bin/
 obj/
-
-# azd
-.azure/
-
-# Aspire publish output
+.aspire-check/
 .aspire-manifest-check/
 .aspire-publish-check/
-.aspire-check/
 aspire-output/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# logs
+*.log
+server.log
+web/tsconfig.tsbuildinfo

@@ -35,9 +35,10 @@
 |---|---|
 | P0 | 게스트 프로필 입력 → 개인화 추천 3건 → 추천 이유·근거 확인 → 실행 계획 생성 → 단계 완료 → 하트 적립 → 후원 임팩트 확인 |
 | P0 | GitHub Copilot SDK를 Microsoft Agent Framework의 `GitHubCopilotAgent` 공급자로 실제 호출 |
+| P0 | 혜택 상세와 최대 3개 비교(`compare_benefits` 도구 포함) |
 | P0 | Azure Container Apps 공개 배포, Cosmos DB 영속화, 모바일 반응형 UI, 오류 상태 |
 | P0 | `PRD.md`, `TRD.md`, 배포 URL, 커밋 해시의 일치 |
-| P1 | SSE 스트리밍, 추천 비교, Azure Monitor 대시보드 |
+| P1 | SSE 스트리밍 추천(P0는 단일 응답 JSON 추천 API로 대체), Azure Monitor 대시보드 |
 | P2 | 관리자 수집 화면, 실제 결제·정산, OCR 증빙, 회원가입 |
 
 P0가 끝나기 전에는 P1/P2 기능을 시작하지 않는다.
@@ -55,16 +56,38 @@ P0가 끝나기 전에는 P1/P2 기능을 시작하지 않는다.
 ## 6. 목표 아키텍처
 
 - 프런트엔드: React + TypeScript + Vite
-- 백엔드: Python 3.12 + FastAPI
+- 백엔드: Python 3.11 + FastAPI (3.10은 agent-framework-github-copilot와 비호환)
 - AI: `github-copilot-sdk` + `agent-framework-github-copilot`
 - 모델 연결: GitHub Copilot SDK의 Microsoft Foundry BYOK 구성
-- 인증: 로컬은 Azure CLI, Azure는 System-assigned Managed Identity
-- 데이터: Azure Cosmos DB for NoSQL
+- 인증: 로컬은 Azure CLI, Azure는 Aspire가 생성한 User-assigned Managed Identity
+- 데이터: Azure Cosmos DB for NoSQL. 로컬 개발에서만 JSON 저장소로 폴백
 - 호스팅: 단일 Azure Container Apps 컨테이너
 - 관찰 가능성: OpenTelemetry + Azure Monitor/Log Analytics
-- 인프라: Bicep + Azure Developer CLI(`azd`)
+- 인프라: .NET Aspire AppHost + Azure Developer CLI(`azd`)
 
 복잡도를 줄이기 위해 React 빌드 결과를 FastAPI가 함께 제공한다. 별도 마이크로서비스나 메시지 큐는 MVP에 추가하지 않는다.
+
+## 7. 저장소 구조와 제출 산출물
+
+제출 커밋에서 다음이 저장소 **루트**에 대소문자 그대로 존재해야 한다. 맞다톤 제출 검증 워크플로가 `PRD.md`와 `TRD.md`의 존재를 하드 체크하며, 없으면 제출 이슈가 자동으로 닫힌다.
+
+```text
+/
+├── PRD.md                 # 심사 에이전트의 제품 기준 문서 (필수)
+├── TRD.md                 # 심사 에이전트의 기술 기준 문서 (필수)
+├── AGENTS.md              # 구현 규칙 (보조)
+├── README.md              # 실행 방법과 데모 URL (보조)
+├── azure.yaml             # azd 정의
+├── Dockerfile
+├── infra/DidimHeart.AppHost/ # .NET Aspire 인프라 정의
+├── data/benefits.seed.json
+├── app/                   # FastAPI, 에이전트, 도메인, 도구
+└── web/                   # React + TypeScript + Vite
+```
+
+- 저장소는 **팀 리더 GitHub 계정 소유의 공개 저장소**여야 한다. 조직 소유 저장소는 검증에서 거부되므로 리더 계정으로 fork 또는 신규 생성한다.
+- 제출 URL 호스트는 `*.azurecontainerapps.io` 같은 Azure 원본 호스트여야 하며 커스텀 도메인은 거부된다.
+- 문서와 구현이 어긋난 채로 제출하지 않는다. 문서 수정은 제출 커밋에 포함한다.
 
 ## 8. AI 구현 규칙
 
@@ -129,7 +152,8 @@ AI에게 셸, 파일 쓰기, 임의 URL 요청, 데이터베이스 직접 쓰기
 
 - MVP 데이터는 공식 출처에서 선별한 15~30개 혜택의 저장소 내 스냅샷을 사용한다.
 - 각 항목에 `sourceUrl`, `sourceAgency`, `verifiedAt`, `eligibility`, `applicationSteps`를 저장한다.
-- 온통청년/복지로 Open API는 후속 자동 동기화 대상으로 두되, API 키나 외부 장애가 데모를 막지 않게 한다.
+- 온통청년은 Container Apps Job으로 정기 동기화하고, API 키나 외부 장애 시 저장소 스냅샷으로 폴백한다.
+- 공공데이터포털 소스는 실제 키로 응답 계약을 검증하기 전까지 기본 비활성화한다.
 - 오래된 정보는 숨기지 말고 "마지막 확인일"과 공식 페이지 확인 안내를 보여준다.
 - AI 추천은 "신청 가능성이 높음"으로 표현하며 공식 수급 자격을 보장하지 않는다.
 

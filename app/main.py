@@ -1,274 +1,374 @@
-"""FastAPI application: API plus the built React app on one origin.
+"""FastAPI application: API under /api/v1, static React under /, health probes.
 
-Keeping both in one container is deliberate (TRD section 2): the judged URL has
-no CORS hop, no second deployment and no login.
+Health/readiness never touch AI. AI runtime state is a separate non-blocking
+diagnostic at /status/ai.
 """
-
 from __future__ import annotations
 
-import logging
 import uuid
-from datetime import date, datetime, timezone
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
-from fastapi import APIRouter, FastAPI, Request
+from fastapi import FastAPI, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict, Field
 
-from app.ai.provider import build_foundry_provider
-from app.domain.plan import HeartEntry
-from app.domain.profile import Profile
-from app.recommender import RecommendationService
-from app.settings import get_settings
-from app.store import BenefitCatalog, CatalogUnavailable, SessionStore
-
-logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
-logger = logging.getLogger("didimheart")
-
-WEB_DIST = Path(__file__).resolve().parents[1] / "web" / "dist"
-
-# Demo sponsorship figures. AGENTS.md section 9: nothing here moves real money.
-DEMO_DONATION_KRW = 1_500_000
-DEMO_HEARTS_PLEDGED = 30_000
-DEMO_SPONSORS = [
-    {"name": "디딤 파트너스", "amountKrw": 900_000},
-    {"name": "함께재단", "amountKrw": 600_000},
-]
+from app.agents.runtime import AgentRuntime
+from app.agents.tools import set_catalog
+from app.config import get_settings
+from app.domain.models import DemoSession, Profile
+from app.repository.cosmos import CosmosRepository
+from app.repository.memory import MemoryRepository
+from app.schemas import (
+    AiStatusOut,
+    BenefitDetailOut,
+    CompareRequest,
+    ErrorBody,
+    ErrorResponse,
+    HeartTxnOut,
+    ImpactOut,
+    LedgerOut,
+    PlanDraftOut,
+    PlanDraftRequest,
+    PlanOut,
+    ProfileIn,
+    RecommendationRequest,
+    RecommendationResponse,
+    SavePlanRequest,
+    SessionOut,
+    StepActionRequest,
+    StepOut,
+)
+from app.services import (
+    AppError,
+    HeartService,
+    PlanService,
+    RecommendationService,
+)
 
 settings = get_settings()
-catalog = BenefitCatalog(settings)
-sessions = SessionStore(settings)
 
 
-def _build_service() -> RecommendationService:
-    """Wire the Copilot SDK provider, degrading to rule-based mode if it fails."""
-    provider: Any | None = None
-    try:
-        if settings.foundry_resource_url:
-            provider = build_foundry_provider(settings)
-    except Exception:
-        logger.warning("foundry provider unavailable, rule-based mode", exc_info=True)
-    return RecommendationService(settings, provider, settings.foundry_model)
-
-
-service = _build_service()
-
-
-class ApiError(Exception):
-    def __init__(self, status: int, code: str, message: str) -> None:
-        super().__init__(message)
-        self.status = status
-        self.code = code
-        self.message = message
-
-
-class RecommendRequest(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    session_id: str | None = Field(alias="sessionId", default=None, max_length=64)
-    profile: Profile
-
-
-class PlanRequest(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    session_id: str = Field(alias="sessionId", min_length=1, max_length=64)
-    benefit_id: str = Field(alias="benefitId", min_length=1, max_length=120)
-
-
-class CompleteRequest(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    session_id: str = Field(alias="sessionId", min_length=1, max_length=64)
-
-
-def new_session_id() -> str:
-    return f"s_{uuid.uuid4().hex[:12]}"
-
-
-def today() -> date:
-    return datetime.now(timezone.utc).date()
-
-
-api = APIRouter(prefix="/api")
-
-
-@api.get("/benefits")
-def list_benefits() -> dict[str, Any]:
-    try:
-        items = catalog.all()
-    except CatalogUnavailable as exc:
-        raise ApiError(503, "NO_RESULTS", "지원사업 데이터를 불러오지 못했어요.") from exc
-    return {
-        "items": [b.model_dump(mode="json", by_alias=True) for b in items],
-        "count": len(items),
-        "source": catalog.source,
-    }
-
-
-@api.post("/recommendations")
-async def recommend(payload: RecommendRequest) -> dict[str, Any]:
-    try:
-        benefits = catalog.all()
-    except CatalogUnavailable as exc:
-        raise ApiError(503, "NO_RESULTS", "지원사업 데이터를 불러오지 못했어요.") from exc
-
-    session_id = payload.session_id or new_session_id()
-    result = await service.recommend(benefits, payload.profile, today())
-
-    if not result.recommendations:
-        raise ApiError(
-            404,
-            "NO_RESULTS",
-            "입력하신 조건에 맞는 지원사업을 찾지 못했어요. 관심 분야나 지역을 바꿔서 다시 시도해 보세요.",
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    if settings.use_cosmos:
+        repo = CosmosRepository(
+            endpoint=settings.cosmos_endpoint,
+            database=settings.cosmos_database,
+            seed_path=settings.seed_path,
         )
-
-    body = result.model_dump(mode="json", by_alias=True)
-    body["sessionId"] = session_id
-    return body
-
-
-@api.post("/plans")
-async def create_plan(payload: PlanRequest) -> dict[str, Any]:
-    benefit = catalog.get(payload.benefit_id)
-    if benefit is None:
-        raise ApiError(404, "NO_RESULTS", "선택한 지원사업을 찾지 못했어요.")
-
-    plan, degraded = await service.build_plan(benefit, payload.session_id, today())
-    sessions.save_plan(plan)
-
-    body = plan.model_dump(mode="json", by_alias=True)
-    body["degraded"] = degraded
-    return body
+    else:
+        repo = MemoryRepository(settings.seed_path, settings.state_path)
+    await repo.startup()
+    set_catalog(repo.list_benefits())
+    runtime = AgentRuntime(timeout=settings.ai_timeout_seconds, model=settings.foundry_model)
+    app.state.repo = repo
+    app.state.runtime = runtime
+    app.state.rec = RecommendationService(repo, runtime, settings.ai_enabled)
+    app.state.plans = PlanService(repo)
+    app.state.hearts = HeartService(repo, settings.demo_sponsor_total_krw)
+    try:
+        yield
+    finally:
+        shutdown = getattr(repo, "shutdown", None)
+        if shutdown is not None:
+            await shutdown()
 
 
-@api.post("/plans/{plan_id}/steps/{step_id}/complete")
-def complete_step(plan_id: str, step_id: str, payload: CompleteRequest) -> dict[str, Any]:
-    plan = sessions.get_plan(plan_id)
-    if plan is None or plan.session_id != payload.session_id:
-        raise ApiError(404, "NO_RESULTS", "계획을 찾지 못했어요. 추천부터 다시 시작해 주세요.")
+app = FastAPI(title="DidimHeart API", version="1.0", lifespan=lifespan)
 
-    step = plan.find_step(step_id)
-    if step is None:
-        raise ApiError(404, "NO_RESULTS", "해당 단계를 찾지 못했어요.")
-
-    # The step itself is the idempotency key, so a repeated click never pays twice.
-    if step.completed:
-        return {
-            "planId": plan.plan_id,
-            "stepId": step.step_id,
-            "awarded": 0,
-            "alreadyCompleted": True,
-            "heartBalance": sessions.balance(payload.session_id),
-        }
-
-    step.completed = True
-    step.completed_at = datetime.now(timezone.utc)
-    sessions.save_plan(plan)
-
-    entry = HeartEntry(
-        entryId=f"e_{uuid.uuid4().hex[:12]}",
-        sessionId=payload.session_id,
-        reason=f"단계 완료: {step.title}",
-        hearts=step.hearts,
-        planId=plan.plan_id,
-        stepId=step.step_id,
+_cors_origins = [o.strip() for o in settings.cors_allow_origins.split(",") if o.strip()]
+if _cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_origins,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
-    sessions.add_heart_entry(entry)
 
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
+        "connect-src 'self'; frame-ancestors 'none'; base-uri 'self'",
+    )
+    response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    return response
+
+
+def _error(code: str, message: str, status: int, retryable: bool = False) -> JSONResponse:
+    body = ErrorResponse(
+        error=ErrorBody(code=code, message=message, retryable=retryable, requestId=uuid.uuid4().hex)
+    )
+    return JSONResponse(status_code=status, content=body.model_dump())
+
+
+@app.exception_handler(AppError)
+async def _app_error_handler(_request: Request, exc: AppError):
+    return _error(exc.code, exc.message, exc.status, exc.retryable)
+
+
+# ---------------- health / diagnostics ----------------
+@app.get("/healthz")
+async def healthz():
+    return {"status": "ok"}
+
+
+@app.get("/readyz")
+async def readyz(request: Request):
+    ok = await request.app.state.repo.ping()
+    if not ok:
+        return _error("DATASTORE_UNAVAILABLE", "데이터 저장소를 사용할 수 없어요.", 503)
+    return {"status": "ready"}
+
+
+@app.get("/status/ai", response_model=AiStatusOut)
+async def status_ai(request: Request):
+    st = request.app.state.runtime.status()
+    return AiStatusOut(
+        runtime=st["runtime"],
+        auth=st["auth"],
+        model=st["model"],
+        enabled=settings.ai_enabled,
+    )
+
+
+# ---------------- sessions / profile ----------------
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+@app.post("/api/v1/demo-sessions", response_model=SessionOut)
+async def create_session(request: Request):
+    repo = request.app.state.repo
+    session = DemoSession(id=f"sess-{uuid.uuid4().hex[:16]}", created_at=_now())
+    await repo.create_session(session)
+    return SessionOut(id=session.id, created_at=session.created_at, has_profile=False)
+
+
+@app.put("/api/v1/demo-sessions/{session_id}/profile", response_model=SessionOut)
+async def save_profile(session_id: str, body: ProfileIn, request: Request):
+    repo = request.app.state.repo
+    session = await repo.get_session(session_id)
+    if session is None:
+        raise AppError("SESSION_NOT_FOUND", "세션을 찾을 수 없어요. 새로 시작해 주세요.", 404)
+    session.profile = Profile(**body.model_dump())
+    await repo.save_session(session)
+    return SessionOut(id=session.id, created_at=session.created_at, has_profile=True)
+
+
+# ---------------- recommendations ----------------
+@app.post("/api/v1/recommendations", response_model=RecommendationResponse)
+async def recommendations(body: RecommendationRequest, request: Request):
+    repo = request.app.state.repo
+    session = await repo.get_session(body.session_id)
+    if session is None:
+        raise AppError("SESSION_NOT_FOUND", "세션을 찾을 수 없어요. 새로 시작해 주세요.", 404)
+    if session.profile is None:
+        raise AppError("VALIDATION_ERROR", "먼저 프로필을 입력해 주세요.", 422)
+    summary, cards = await request.app.state.rec.recommend(session.profile)
+    return RecommendationResponse(summary=summary, recommendations=cards, ai_generated=True)
+
+
+# ---------------- benefits ----------------
+@app.get("/api/v1/benefits/{benefit_id}", response_model=BenefitDetailOut)
+async def benefit_detail(benefit_id: str, request: Request):
+    b = request.app.state.repo.get_benefit(benefit_id)
+    if b is None:
+        raise AppError("BENEFIT_NOT_FOUND", "혜택을 찾을 수 없어요.", 404)
+    return BenefitDetailOut(
+        id=b.id,
+        title=b.title,
+        provider=b.provider,
+        category=b.category.value,
+        regions=b.regions,
+        eligibility_text=b.eligibilityText,
+        benefit_text=b.benefitText,
+        application_steps=b.applicationSteps,
+        required_documents=b.requiredDocuments,
+        deadline=b.deadline,
+        source_url=b.sourceUrl,
+        source_agency=b.sourceAgency,
+        verified_at=b.verifiedAt,
+        status=b.status,
+    )
+
+
+@app.post("/api/v1/benefits/compare")
+async def compare(body: CompareRequest, request: Request):
+    from app.agents.tools import compare_benefits
+
+    rows = compare_benefits(body.benefit_ids)
+    return {"rows": rows}
+
+
+# ---------------- plans ----------------
+def _plan_out(plan) -> PlanOut:
+    return PlanOut(
+        id=plan.id,
+        session_id=plan.session_id,
+        benefit_id=plan.benefit_id,
+        title=plan.title,
+        deadline=plan.deadline,
+        required_documents=plan.required_documents,
+        steps=[
+            StepOut(
+                id=s.id,
+                title=s.title,
+                description=s.description,
+                estimated_minutes=s.estimated_minutes,
+                order=s.order,
+                status=s.status,
+            )
+            for s in plan.steps
+        ],
+        uncertainties=plan.uncertainties,
+        source_url=plan.source_url,
+        apply_url=plan.apply_url,
+        status=plan.status,
+        created_at=plan.created_at,
+    )
+
+
+@app.post("/api/v1/plans/draft", response_model=PlanDraftOut)
+async def plan_draft(body: PlanDraftRequest, request: Request):
+    repo = request.app.state.repo
+    session = await repo.get_session(body.session_id)
+    if session is None:
+        raise AppError("SESSION_NOT_FOUND", "세션을 찾을 수 없어요. 새로 시작해 주세요.", 404)
+    draft = await request.app.state.rec.draft_plan(body.benefit_id)
+    return PlanDraftOut(
+        benefit_id=draft["benefit_id"],
+        title=draft["title"],
+        deadline=draft["deadline"],
+        required_documents=draft["required_documents"],
+        steps=[
+            StepOut(
+                id=s.id,
+                title=s.title,
+                description=s.description,
+                estimated_minutes=s.estimated_minutes,
+                order=s.order,
+                status=s.status,
+            )
+            for s in draft["steps"]
+        ],
+        uncertainties=draft["uncertainties"],
+        source_url=draft["source_url"],
+        apply_url=draft["apply_url"],
+        ai_generated=True,
+    )
+
+
+@app.post("/api/v1/plans", response_model=PlanOut)
+async def save_plan(body: SavePlanRequest, request: Request):
+    from app.domain.models import ActionStep
+
+    steps = [
+        ActionStep(
+            id=s.id or f"step-{i}",
+            title=s.title,
+            description=s.description,
+            estimated_minutes=s.estimated_minutes,
+            order=s.order,
+            status="todo",
+        )
+        for i, s in enumerate(body.steps)
+    ]
+    plan = await request.app.state.plans.save_plan(
+        session_id=body.session_id,
+        benefit_id=body.benefit_id,
+        title=body.title,
+        deadline=body.deadline,
+        required_documents=body.required_documents,
+        steps=steps,
+        uncertainties=body.uncertainties,
+        source_url=body.source_url,
+        apply_url=body.apply_url,
+    )
+    return _plan_out(plan)
+
+
+@app.get("/api/v1/plans", response_model=list[PlanOut])
+async def list_plans(
+    request: Request,
+    session_id: str = Query(alias="sessionId"),
+):
+    plans = await request.app.state.plans.list_plans(session_id)
+    return [_plan_out(p) for p in plans]
+
+
+def _txn_out(txn) -> HeartTxnOut:
+    return HeartTxnOut(
+        id=txn.id,
+        plan_id=txn.plan_id,
+        step_id=txn.step_id,
+        type=txn.type,
+        amount=txn.amount,
+        reason=txn.reason,
+        created_at=txn.created_at,
+    )
+
+
+@app.post("/api/v1/plans/{plan_id}/steps/{step_id}/complete")
+async def complete_step(plan_id: str, step_id: str, body: StepActionRequest, request: Request):
+    plan, txn, duplicate = await request.app.state.plans.complete_step(
+        plan_id, step_id, body.session_id
+    )
     return {
-        "planId": plan.plan_id,
-        "stepId": step.step_id,
-        "awarded": step.hearts,
-        "alreadyCompleted": False,
-        "heartBalance": sessions.balance(payload.session_id),
+        "plan": _plan_out(plan).model_dump(by_alias=True),
+        "transaction": _txn_out(txn).model_dump(by_alias=True) if txn else None,
+        "duplicate": duplicate,
     }
 
 
-@api.get("/hearts")
-def hearts(sessionId: str) -> dict[str, Any]:
-    entries = sessions.ledger(sessionId)
+@app.post("/api/v1/plans/{plan_id}/steps/{step_id}/reopen")
+async def reopen_step(plan_id: str, step_id: str, body: StepActionRequest, request: Request):
+    plan, reversal = await request.app.state.plans.reopen_step(
+        plan_id, step_id, body.session_id
+    )
     return {
-        "sessionId": sessionId,
-        "balance": sum(entry.hearts for entry in entries),
-        "entries": [e.model_dump(mode="json", by_alias=True) for e in entries],
+        "plan": _plan_out(plan).model_dump(by_alias=True),
+        "reversal": _txn_out(reversal).model_dump(by_alias=True) if reversal else None,
     }
 
 
-@api.get("/impact")
-def impact(sessionId: str | None = None) -> dict[str, Any]:
-    return {
-        "totalDonationKrw": DEMO_DONATION_KRW,
-        "heartsPledged": DEMO_HEARTS_PLEDGED,
-        "heartsDistributed": sessions.total_hearts_distributed(),
-        "completedActions": sessions.completed_action_count(),
-        "sponsors": DEMO_SPONSORS,
-        "note": "하트는 데모 포인트이며 현금이나 전자화폐가 아닙니다.",
-    }
+# ---------------- hearts / impact ----------------
+@app.get("/api/v1/hearts/ledger", response_model=LedgerOut)
+async def hearts_ledger(
+    request: Request,
+    session_id: str = Query(alias="sessionId"),
+):
+    balance, txns = await request.app.state.hearts.ledger(session_id)
+    return LedgerOut(balance=balance, transactions=[_txn_out(t) for t in txns])
 
 
-def create_app() -> FastAPI:
-    app = FastAPI(title="디딤하트 API", version="0.1.0", docs_url="/api/docs")
-
-    @app.exception_handler(ApiError)
-    async def _api_error(_request: Request, exc: ApiError) -> JSONResponse:
-        return JSONResponse(
-            status_code=exc.status, content={"error": {"code": exc.code, "message": exc.message}}
-        )
-
-    @app.middleware("http")
-    async def security_headers(request: Request, call_next):  # type: ignore[no-untyped-def]
-        response = await call_next(request)
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Referrer-Policy"] = "no-referrer"
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
-            "connect-src 'self'; frame-ancestors 'none'; base-uri 'self'"
-        )
-        return response
-
-    @app.get("/healthz")
-    def healthz() -> dict[str, str]:
-        return {"status": "ok"}
-
-    @app.get("/readyz")
-    def readyz() -> JSONResponse:
-        try:
-            count = len(catalog.all())
-        except CatalogUnavailable:
-            return JSONResponse(status_code=503, content={"status": "no-catalog"})
-        return JSONResponse(
-            content={"status": "ok", "benefits": count, "catalogSource": catalog.source}
-        )
-
-    @app.get("/status/ai")
-    def status_ai() -> dict[str, Any]:
-        return {
-            "aiEnabled": service.ai_enabled,
-            "model": settings.foundry_model or None,
-            "foundryConfigured": bool(settings.foundry_resource_url),
-            "agents": ["BenefitMatcherAgent", "ActionPlannerAgent"],
-            "runtime": "microsoft-agent-framework + github-copilot-sdk",
-        }
-
-    app.include_router(api)
-
-    if WEB_DIST.exists():
-        assets = WEB_DIST / "assets"
-        if assets.exists():
-            app.mount("/assets", StaticFiles(directory=assets), name="assets")
-
-        @app.get("/{full_path:path}")
-        def spa(full_path: str) -> FileResponse:
-            candidate = WEB_DIST / full_path
-            if full_path and candidate.is_file():
-                return FileResponse(candidate)
-            return FileResponse(WEB_DIST / "index.html")
-
-    return app
+@app.get("/api/v1/impact", response_model=ImpactOut)
+async def impact(request: Request):
+    data = await request.app.state.hearts.impact()
+    return ImpactOut(
+        sponsor_total_krw=data["sponsor_total_krw"],
+        allocated_hearts=data["allocated_hearts"],
+        completed_actions=data["completed_actions"],
+        active_plans=data["active_plans"],
+    )
 
 
-app = create_app()
+# ---------------- static React app ----------------
+_web_dist = Path(settings.web_dist)
+if _web_dist.exists():
+    app.mount("/assets", StaticFiles(directory=str(_web_dist / "assets")), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def spa(full_path: str):
+        candidate = _web_dist / full_path
+        if full_path and candidate.is_file():
+            return FileResponse(str(candidate))
+        return FileResponse(str(_web_dist / "index.html"))

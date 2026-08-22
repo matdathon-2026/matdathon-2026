@@ -20,6 +20,52 @@ from app.ingestion.allowlist import host_of, is_allowed
 SLUG_RE = re.compile(r"[^a-z0-9]+")
 MAX_TEXT = 2000
 MAX_LIST_ITEMS = 12
+CATEGORY_MAP = {
+    "생활": "living",
+    "주거": "housing",
+    "교육": "education",
+    "취업": "employment",
+    "의료": "mental_health",
+    "심리": "mental_health",
+    "금융": "finance",
+}
+REGION_MAP = {
+    "서울": "seoul",
+    "서울특별시": "seoul",
+    "부산": "busan",
+    "부산광역시": "busan",
+    "대구": "daegu",
+    "대구광역시": "daegu",
+    "인천": "incheon",
+    "인천광역시": "incheon",
+    "광주": "gwangju",
+    "광주광역시": "gwangju",
+    "대전": "daejeon",
+    "대전광역시": "daejeon",
+    "울산": "ulsan",
+    "울산광역시": "ulsan",
+    "세종": "sejong",
+    "세종특별자치시": "sejong",
+    "경기": "gyeonggi",
+    "경기도": "gyeonggi",
+    "강원": "gangwon",
+    "강원특별자치도": "gangwon",
+    "충북": "chungbuk",
+    "충청북도": "chungbuk",
+    "충남": "chungnam",
+    "충청남도": "chungnam",
+    "전북": "jeonbuk",
+    "전북특별자치도": "jeonbuk",
+    "전남": "jeonnam",
+    "전라남도": "jeonnam",
+    "경북": "gyeongbuk",
+    "경상북도": "gyeongbuk",
+    "경남": "gyeongnam",
+    "경상남도": "gyeongnam",
+    "제주": "jeju",
+    "제주특별자치도": "jeju",
+    "전국": "ALL",
+}
 
 
 class RejectedCandidate(Exception):
@@ -108,15 +154,27 @@ def validate_candidate(
     if isinstance(age_min, int) and isinstance(age_max, int) and age_min > age_max:
         raise RejectedCandidate(record.source_id, "age.min greater than age.max")
 
-    regions = _clean_list(candidate.get("regions")) or ["ALL"]
+    regions = [
+        REGION_MAP.get(region, region)
+        for region in (_clean_list(candidate.get("regions")) or ["ALL"])
+    ]
+    raw_category = _clean_text(candidate.get("category"), 40)
+    category = CATEGORY_MAP.get(raw_category, raw_category)
+    snapshot_id = _clean_text(candidate.get("id"), 120)
+    if record.source_system == "snapshot" and re.fullmatch(
+        r"[a-z0-9][a-z0-9-]{2,119}", snapshot_id
+    ):
+        benefit_id = snapshot_id
+    else:
+        benefit_id = build_benefit_id(record, title)
 
     payload = {
-        "id": build_benefit_id(record, title),
+        "id": benefit_id,
         "title": title,
         "provider": _clean_text(candidate.get("provider"), 120)
         or record.source_agency
         or "미확인",
-        "category": candidate.get("category"),
+        "category": category,
         "regions": regions,
         "age": {"min": age_min, "max": age_max},
         "eligibilityText": _clean_text(candidate.get("eligibilityText")),

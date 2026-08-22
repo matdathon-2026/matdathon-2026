@@ -6,7 +6,7 @@
 | 상태 | Hackathon MVP |
 | 작성 기준일 | 2026-08-22 |
 | 배포 목표 | Azure Container Apps |
-| 주요 언어 | Python, TypeScript |
+| 주요 언어 | Python 3.11, TypeScript |
 
 ## 1. 기술 목표
 
@@ -24,14 +24,14 @@
 | 계층 | 선택 | 이유 |
 |---|---|---|
 | UI | React, TypeScript, Vite | 빠른 구현, 반응형 컴포넌트, 타입 안전성 |
-| API | FastAPI, Pydantic | Python MAF 통합, 구조화 검증, SSE 구현 용이 |
+| API | FastAPI, Pydantic (Python 3.11) | Python MAF 통합, 구조화 검증, SSE 구현 용이. Python 3.10은 `agent-framework-github-copilot`와 비호환이라 3.11로 고정 |
 | AI SDK | `github-copilot-sdk` | 필수 기술, 세션·스트리밍·도구 호출 |
 | Agent | `agent-framework-github-copilot` | Copilot SDK를 MAF 에이전트 공급자로 사용 |
 | 모델 | Microsoft Foundry 배포 모델 | Azure Managed Identity 기반 BYOK |
-| 저장소 | Azure Cosmos DB for NoSQL | 서버리스, JSON 모델, 원장 저장 |
+| 저장소 | Azure Cosmos DB for NoSQL | Aspire가 컨테이너와 관리 ID 역할을 만들고 저장소 인터페이스가 Cosmos 구현을 선택 |
 | 호스팅 | Azure Container Apps | 공개 HTTPS, 자동 확장, 원본 Azure URL |
 | 관찰 | OpenTelemetry, Azure Monitor, Log Analytics | 에이전트·도구·API 지연과 오류 추적 |
-| IaC | .NET Aspire AppHost + `azd` | 인프라를 코드로 모델링하고 Bicep을 생성해 반복 배포 |
+| IaC | .NET Aspire AppHost + `azd` | AppHost를 단일 진실 원천으로 사용하고 배포 시 Bicep을 생성 |
 | 테스트 | pytest, Vitest, Playwright | 도메인·UI·E2E 분리 |
 
 ## 3. 시스템 컨텍스트
@@ -63,7 +63,6 @@ flowchart LR
 - API와 Copilot SDK 런타임을 같은 컨테이너에 둔다.
 - 백엔드에서 SDK가 번들 런타임을 관리하게 해 별도 공개 CLI 포트를 만들지 않는다.
 - 트래픽이 커지면 Copilot CLI headless 서버를 별도 사이드카/서비스로 분리하지만 MVP에는 적용하지 않는다.
-- azure cloud에 배포한다
 
 ## 4. 컴포넌트
 
@@ -72,7 +71,7 @@ flowchart LR
 책임:
 
 - 게스트 세션 생성과 최소 프로필 입력
-- 추천 SSE 렌더링
+- 추천 결과 렌더링과 진행 단계 표시(P0: 단일 응답, P1: SSE)
 - 혜택 상세·비교
 - 계획 초안 확인·수정·저장
 - 진행 단계 완료
@@ -98,26 +97,7 @@ flowchart LR
 
 ### 4.3 Benefit Catalog
 
-카탈로그는 **Aspire로 배포되는 Azure Container Apps 예약 작업(`ingest`)** 이 자동으로 채운다. 앱 시작 시 시드를 밀어 넣는 방식이 아니라, 작업이 카탈로그의 유일한 writer이고 API와 에이전트는 읽기만 한다.
-
-파이프라인 단계:
-
-```text
-fetch(허용목록 HTTP) → archive(Blob 원본 보관) → normalize(CatalogCuratorAgent)
-  → validate(결정론적 검증기) → upsert(Cosmos, contentHash 기반 멱등)
-```
-
-| 단계 | 모듈 | 규칙 |
-|---|---|---|
-| fetch | `app/ingestion/sources/` | 온통청년(검증됨), data.go.kr(미검증·기본 비활성), 저장소 스냅샷(폴백) |
-| archive | `app/ingestion/archive.py` | 원본 payload를 Blob에 보관해 추천 근거를 추적 가능하게 유지 |
-| normalize | `app/ingestion/normalizer.py` | MAF + Copilot SDK. **도구 0개**, 텍스트 변환만 수행 |
-| validate | `app/ingestion/validator.py` | 출처·날짜·스키마 검증. 통과 못하면 저장하지 않음 |
-| upsert | `app/ingestion/repository.py` | `contentHash`가 같으면 건너뜀. AI는 DB에 쓰지 못함 |
-
-수집기가 접근할 수 있는 호스트는 `app/ingestion/allowlist.py`의 허용목록으로 HTTP 클라이언트 계층에서 강제한다. 리다이렉트도 따르지 않는다.
-
-`sourceUrl`, `sourceAgency`, `sourceSystem`, `sourceId`, `contentHash`는 항상 수집기가 채우며 모델 출력으로 덮어쓸 수 없다.
+MVP에서는 `data/benefits.seed.json`을 애플리케이션 시작 시 Cosmos DB에 upsert한다. 동일한 `sourceId`와 `verifiedAt`이면 재삽입하지 않는다.
 
 필수 데이터:
 
@@ -126,7 +106,7 @@ fetch(허용목록 HTTP) → archive(Blob 원본 보관) → normalize(CatalogCu
   "id": "ncrc-self-reliance-allowance",
   "title": "자립수당",
   "provider": "보건복지부",
-  "category": "생활",
+  "category": "living",
   "regions": ["ALL"],
   "age": {"min": 18, "max": null},
   "eligibilityText": "공식 원문의 지원 대상 요약",
@@ -372,7 +352,8 @@ AI 출력에는 보상 규칙이나 하트 수량을 포함하지 않는다. 서
 | GET | `/status/ai` | 비차단 AI 런타임·모델 상태 |
 | POST | `/api/v1/demo-sessions` | 게스트 세션 생성 |
 | PUT | `/api/v1/demo-sessions/{id}/profile` | 프로필 저장 |
-| POST | `/api/v1/recommendations/stream` | SSE 추천 스트림 |
+| POST | `/api/v1/recommendations` | 추천 생성(P0, 단일 JSON 응답) |
+| POST | `/api/v1/recommendations/stream` | 동일 입력의 SSE 스트림(P1) |
 | GET | `/api/v1/benefits/{id}` | 혜택 상세 |
 | POST | `/api/v1/benefits/compare` | 혜택 비교 |
 | POST | `/api/v1/plans/draft` | AI 계획 초안 |
@@ -384,6 +365,8 @@ AI 출력에는 보상 규칙이나 하트 수량을 포함하지 않는다. 서
 | GET | `/api/v1/impact` | 비식별 집계 임팩트 |
 
 ### SSE 이벤트
+
+두 엔드포인트는 동일한 워크플로와 동일한 검증기를 공유한다. `/api/v1/recommendations`가 P0 경로이며 최종 검증된 결과만 한 번에 반환한다. SSE는 같은 결과에 진행 단계를 덧붙이는 P1 업그레이드이므로, SSE가 완성되지 않아도 골든 패스는 동작해야 한다.
 
 ```text
 event: status
@@ -401,7 +384,11 @@ data: {"count":3}
 
 내부 프롬프트, 토큰, 스택 트레이스는 브라우저에 보내지 않는다.
 
-## 9. Cosmos DB 설계
+## 9. 데이터 저장소 설계
+
+**MVP 구현 상태**: Azure 배포는 `app/repository/cosmos.py`를 사용해 카탈로그, 게스트 세션, 계획, 하트 원장을 영속화한다. `COSMOS_ENDPOINT`가 없는 로컬 개발에서만 `app/repository/memory.py`로 폴백한다. 수집 Job이 갱신한 카탈로그는 API가 주기적으로 다시 읽는다.
+
+### 9.1 Cosmos DB 설계
 
 단일 데이터베이스 `didimheart`에 다음 컨테이너를 사용한다.
 
@@ -415,8 +402,8 @@ data: {"count":3}
 ### 멱등성
 
 - 완료 요청의 `idempotency_key`는 `{sessionId}:{planId}:{stepId}:complete`로 만든다.
-- Cosmos DB unique key 또는 transactional batch로 동일 키 중복을 거부한다.
-- 계획 상태 갱신과 원장 삽입은 동일 파티션에서 transactional batch로 수행한다.
+- Cosmos 원장 항목 ID는 멱등 키의 SHA-256에서 결정론적으로 만들고 `create_item` 충돌을 중복 완료로 처리한다.
+- 잔액은 저장 필드가 아니라 원장 거래의 합으로 계산한다.
 - 완료 취소는 기존 거래를 삭제하지 않고 `reversal` 거래를 추가한다.
 
 ### 보존
@@ -448,7 +435,7 @@ from copilot.session import ProviderConfig
 credential = DefaultAzureCredential(require_envvar=True)
 
 async def get_bearer_token(_args) -> str:
-    token = await credential.get_token("https://ai.azure.com/.default")
+    token = await credential.get_token("https://cognitiveservices.azure.com/.default")
     return token.token
 
 provider = ProviderConfig(
@@ -486,10 +473,12 @@ API 키는 사용하지 않는다. Managed Identity에 필요한 최소 역할�
 ### 10.3 권한 처리
 
 - AI 도구는 모두 읽기 전용이다.
-- SDK의 기본 전체 승인(`approve_all`)에 의존하지 않는다.
-- 허용된 네 개의 앱 도구만 세션에 노출한다.
-- 셸, 파일, 임의 URL, MCP 도구는 비활성화한다.
-- 향후 쓰기 도구를 추가하면 `approval_mode="always_require"`와 사용자 확인을 연결한다.
+- `GitHubCopilotAgent`의 기본 permission handler는 **deny-all**이다. 편의를 위해 `PermissionHandler.approve_all`로 열지 않는다.
+- **실측 동작**: MAF 함수 도구는 실행 시 `PermissionRequestCustomTool`로 게이트되어 deny-all 기본값에 막힌다. 따라서 우리 4개 읽기 전용 도구도 명시적으로 승인해 주지 않으면 "Permission denied"로 실패한다. `approval_mode`를 생략해도 게이트를 우회하지 못한다.
+- 이를 위해 `GitHubCopilotOptions`에 `on_permission_request` 핸들러를 설치한다. 핸들러는 요청 도구 이름이 **허용 목록(정확히 일치)** 에 있을 때만 `PermissionDecisionApproveOnce()`로 승인하고, 그 외에는 `PermissionDecisionUserNotAvailable()`로 거부한다.
+- 허용 목록은 정확히 `{"search_benefits", "get_benefit_detail", "compare_benefits", "get_source_metadata"}` 네 개뿐이다. 이름이 목록에 없으면(셸·파일 쓰기·임의 URL·MCP 등 모든 요청 포함) **거부가 기본값**이다.
+- 결정 클래스는 `copilot.generated.rpc`(`PermissionDecisionApproveOnce`, `PermissionDecisionUserNotAvailable`), 요청 클래스는 `copilot.session_events`(`PermissionRequestCustomTool`)에서 가져온다.
+- 향후 쓰기 도구를 추가하더라도 자동 승인 목록에 절대 넣지 않고, 별도의 사용자 확인 흐름을 통해서만 처리한다.
 
 ## 11. 추천 정확도와 환각 방지
 
@@ -611,7 +600,7 @@ HTTP recommendation request
 
 - Copilot SDK/MAF를 mock provider로 실행해 도구 호출 계약 검증
 - Cosmos Emulator 또는 repository fake로 transactional 동작 검증
-- SSE 이벤트 순서와 종료 검증
+- SSE 이벤트 순서와 종료 검증(P1 구현 시)
 - 모델이 잘못된 ID, URL, 금액을 반환할 때 거부 확인
 
 ### E2E 테스트
@@ -622,8 +611,8 @@ HTTP recommendation request
 4. 출처 링크 존재 확인
 5. 계획 초안 생성·저장
 6. 단계 완료
-7. 하트 원장 +1 확인
-8. 같은 요청 재전송 후 원장 수 불변 확인
+7. 하트 원장에 `earn` 거래 1건이 추가되고 잔액이 +10이 된다
+8. 같은 요청 재전송 후 원장 거래 수와 잔액이 모두 불변임을 확인
 9. 임팩트 집계 확인
 
 ### 배포 스모크 테스트
@@ -637,32 +626,18 @@ Invoke-RestMethod "$env:APP_URL/readyz"
 
 ## 16. Azure 인프라
 
-인프라는 `infra/DidimHeart.AppHost`의 **.NET Aspire AppHost**로 모델링한다. 손으로 쓴 Bicep을 유지하지 않고, `azd`가 AppHost에서 Bicep을 생성한다.
-
 ### 필수 리소스
 
-| Aspire 리소스 | Azure 리소스 |
-|---|---|
-| `cae` | Container Apps Environment + ACR + Log Analytics |
-| `api` | Container App (외부 ingress, 포트 8000) |
-| `ingest` | **Container Apps Job (Schedule 트리거)** |
-| `cosmos` | Cosmos DB for NoSQL (`benefits`, `sessions`, `plans`, `heartLedger`) |
-| `archive` | Storage 계정 + `raw-benefits` Blob 컨테이너 |
-| `foundry` | Foundry 모델 리소스 + `chat` 배포 |
-
-### 예약 수집 작업
-
-`ingest`는 `api`와 **동일한 이미지**를 쓰고 명령만 `python -m app.ingestion`으로 바꾼다. 코드가 갈라질 수 없다.
-
-```csharp
-.PublishAsScheduledAzureContainerAppJob(ingestCron, (infra, job) =>
-{
-    job.Configuration.ReplicaTimeout = 1800;
-    job.Configuration.ReplicaRetryLimit = 1;
-});
-```
-
-기본 cron은 `0 18 * * *`(UTC) = 03:00 KST이며 AppHost 구성 `IngestCron`으로 바꾼다.
+- Resource Group
+- Azure Container Registry
+- Azure Container Apps Environment
+- Azure Container App
+- Azure Container Apps Job
+- Azure Cosmos DB for NoSQL
+- Azure Blob Storage(raw payload archive)
+- Microsoft Foundry 모델 리소스
+- Log Analytics Workspace / Azure Monitor
+- Aspire가 생성한 User-assigned Managed Identity
 
 ### 권장 Container Apps 설정
 
@@ -682,14 +657,11 @@ AI 모델의 일시적 지연이나 rate limit은 `/status/ai`에만 반영하�
 
 ### Managed Identity 역할
 
-Aspire는 리소스마다 **user-assigned managed identity**를 만들고 `AZURE_CLIENT_ID`를 주입한다. `DefaultAzureCredential`이 이를 그대로 사용한다.
+- Foundry 모델 호출 역할
+- Cosmos DB Built-in Data Contributor
+- 필요 시 ACR Pull
 
-| 리소스 | Cosmos | Storage | Foundry |
-|---|---|---|---|
-| `api` | Data Contributor | Blob Data **Reader** | OpenAI User |
-| `ingest` | Data Contributor | Blob Data **Contributor** | OpenAI User |
-
-API는 원본 아카이브에 쓰지 못한다. 관리자 권한이나 구독 전체 Contributor를 어느 쪽에도 주지 않는다.
+관리자 권한이나 구독 전체 Contributor를 앱에 주지 않는다.
 
 ## 17. 빌드 및 배포
 
@@ -714,86 +686,60 @@ Pop-Location
 uvicorn app.main:app --reload --port 8000
 ```
 
-### 17.2 Copilot 런타임 사전 설치
+### 17.2 Copilot 런타임(번들) 사용
 
-`github-copilot-sdk` wheel은 호환되는 Copilot 런타임 버전을 고정하지만 바이너리는 별도로 받아야 한다. 첫 사용자 요청에서 다운로드하지 않도록 이미지 빌드 시 사전 설치한다.
+**실측 확인**: `github-copilot-sdk` wheel은 Copilot 런타임 바이너리를 **번들로 포함**한다(`copilot/bin/copilot`, Windows에서는 `copilot.exe`). 따라서 별도 다운로드 단계가 필요 없고, `python -m copilot download-runtime` 명령은 사용하지 않는다. 런타임 시점에도 다운로드가 발생하지 않는다.
 
 ```dockerfile
-ENV COPILOT_CLI_EXTRACT_DIR=/opt/copilot-runtime
+# Python 3.11 고정 (3.10 비호환, 3.12 미검증)
+FROM python:3.11-slim AS runtime
 
-RUN pip install --no-cache-dir -r requirements.txt \
-    && python -m copilot download-runtime \
-    && chmod -R a+rX /opt/copilot-runtime
-
+# 런타임 바이너리는 wheel에 번들되어 있으므로 다운로드하지 않는다.
 ENV COPILOT_SKIP_CLI_DOWNLOAD=1
+
+RUN pip install --no-cache-dir -r requirements.txt
 ```
 
-- SDK와 런타임 버전은 lock file과 이미지 digest로 고정한다.
-- 앱 실행 사용자가 `/opt/copilot-runtime`을 읽고 실행할 수 있어야 한다.
-- 배포 후 `/status/ai`에서 런타임 시작, Managed Identity 토큰 획득, 테스트 모델 응답을 확인한다.
-- 심사 요청 시 GitHub Releases에서 런타임을 내려받는 구성은 허용하지 않는다.
+- SDK와 번들 런타임 버전은 `requirements.txt`의 `==` 핀과 이미지 digest로 고정한다.
+- `COPILOT_SKIP_CLI_DOWNLOAD=1`을 설정해 런타임이 어떤 상황에서도 원격 다운로드를 시도하지 않게 한다.
+- 배포 후 `/status/ai`에서 런타임 기동(`runtime: ready`)과 토큰 구성(`auth: configured`)을 확인한다.
+- 심사 요청 시 GitHub Releases에서 런타임을 내려받는 구성은 사용하지 않으며, 번들 런타임만 사용한다.
 
-### 17.3 반복 가능한 Azure 배포
+### 17.3 실제 배포 경로 (Aspire → Azure)
 
-저장소에 `azure.yaml`, `infra/DidimHeart.AppHost/`, `Dockerfile`을 커밋한다. Bicep은 커밋하지 않고 `azd`가 AppHost에서 생성한다.
+`infra/DidimHeart.AppHost/AppHost.cs`가 전체 Azure 토폴로지의 단일 진실 원천이다. 첫 프로비저닝은 공개 placeholder 이미지로 ACR까지 만들고, 실제 이미지는 `az acr build`로 Azure에서 빌드한다. 로컬 Docker 데몬은 사용하지 않는다.
+
+1. `azd provision`: Aspire AppHost를 분석해 ACR, Container Apps 환경, Cosmos DB, Blob Storage, Foundry 모델과 관리 ID 역할을 생성한다.
+2. `az acr build`: 저장소 Dockerfile을 ACR Tasks에서 원격 빌드한다.
+3. `DIDIMHEART_IMAGE`를 프로세스 환경 변수로 전달해 `azd deploy`를 실행한다.
 
 ```powershell
-azd auth login
-azd env new didimheart-hackathon
+azd env new didimheart
 azd env set AZURE_LOCATION koreacentral
-azd up
+azd provision
+
+az acr build --registry <acr-name> --image didimheart:<commit-sha> --file Dockerfile .
+$env:DIDIMHEART_IMAGE = "<acr-name>.azurecr.io/didimheart:<commit-sha>"
+azd deploy
 ```
 
-`azd up`은 다음을 수행한다.
+4. 배포 직후 `/healthz`, `/readyz`, `/status/ai`와 게스트 골든 패스를 확인한다.
 
-1. AppHost를 Bicep으로 변환해 Azure 리소스 프로비저닝
-2. 리소스별 managed identity와 역할 할당 생성
-3. 컨테이너 이미지 빌드·푸시(프런트엔드 빌드는 Dockerfile 1단계에서 수행)
-4. Container App과 예약 수집 작업 배포
-5. `COSMOS_ENDPOINT`, `FOUNDRY_RESOURCE_URL`, `FOUNDRY_MODEL`, `INGEST_ARCHIVE_ACCOUNT_URL` 주입
-6. Azure 원본 배포 URL 출력
+배포 리소스: 구독 `f71b167d-9880-4aee-b51a-bed41522067f`, RG `rg-didimheart`, 리전 `koreacentral`. 실제 리소스 이름은 Aspire의 안정적인 리소스 토큰으로 생성한다.
 
-생성될 Bicep을 미리 확인하려면:
+### 17.4 Aspire / IaC 정의
 
-```powershell
-azd infra synth
-```
-
-수집 작업을 스케줄과 무관하게 즉시 한 번 실행하려면:
-
-```powershell
-az containerapp job start --name ingest --resource-group <rg>
-```
-
-온통청년 API 키는 secret 파라미터로 주입한다. 키가 없으면 수집기는 저장소 스냅샷으로 자동 폴백한다.
-
-```powershell
-azd env set AZURE_YOUTHCENTERAPIKEY <key>
-```
-
-### 17.4 긴급 단일 명령 배포
-
-IaC가 막힐 때만 다음 경로를 사용한다.
-
-```powershell
-az containerapp up `
-  --name didimheart `
-  --resource-group rg-didimheart `
-  --location koreacentral `
-  --source . `
-  --ingress external `
-  --target-port 8000
-```
-
-이후 Managed Identity와 역할 할당은 반드시 별도로 적용한다. 최종 제출 전에는 가능한 경우 Bicep에 역반영한다.
+`azure.yaml`은 Aspire AppHost 프로젝트를 가리키며 손으로 관리하는 Bicep은 두지 않는다. Aspire가 API Container App, 정기 수집 Container Apps Job(`0 18 * * *` UTC), ACR, Cosmos DB, Blob Storage, Foundry, Log Analytics와 각 User-assigned Managed Identity 역할을 생성한다.
 
 ### 17.5 제출 URL
 
-제출에는 다음과 같은 Azure 원본 호스트를 사용한다.
+제출에는 다음 Azure 원본 호스트를 사용한다(확정값).
 
 ```text
-https://didimheart.<generated-id>.koreacentral.azurecontainerapps.io
+https://api.ambitiouswave-21c719e8.koreacentral.azurecontainerapps.io
 ```
+
+배포 리소스(확정값): 구독 `f71b167d-9880-4aee-b51a-bed41522067f`, 리소스 그룹 `rg-didimheart`, API 앱 `api`, 수집 Job `ingest`, 리전 `koreacentral`.
 
 맞다톤 제출 워크플로가 알려진 Azure 호스트 suffix를 검사하므로 커스텀 도메인을 제출하지 않는다.
 
@@ -829,7 +775,7 @@ tests → container build → Azure deploy → /healthz → guest E2E smoke
 
 | 구간 | 산출물 |
 |---|---|
-| 0:00~0:30 | Copilot SDK + MAF + Foundry BYOK 실호출 스파이크, 런타임 다운로드 검증 |
+| 0:00~0:30 | Copilot SDK + MAF + Foundry BYOK 실호출 스파이크, 번들 런타임 검증 |
 | 0:30~1:15 | 저장소 골격, 시드 15건, FastAPI, 사전 필터, 하트 원장 |
 | 1:15~2:30 | matcher/planner, 도구, 구조화 출력 검증 |
 | 2:30~3:30 | React 온보딩·추천·계획·하트 핵심 화면 |
@@ -838,7 +784,11 @@ tests → container build → Azure deploy → /healthz → guest E2E smoke
 | 4:50~5:10 | 문서와 실제 구현 동기화, 시연 데이터 |
 | 5:10~5:30 | 제출 커밋 고정, URL·문서·게스트 접근 확인, 제출 |
 
-첫 스파이크에서 `GitHubCopilotOptions.provider` 전달이 동작하지 않으면 패키지 버전을 최신 호환 조합으로 한 번 조정한다. 그래도 실패하면 서버 전용 `COPILOT_GITHUB_TOKEN`을 Container Apps secret으로 주입하는 Copilot 인증으로 전환해 게스트 UX와 MAF 통합을 유지한다. 토큰은 브라우저에 전달하지 않는다. MAF를 제거하거나 타사 AI SDK로 우회하지 않는다. Cosmos DB, AI 핵심 흐름, 공개 Azure 배포는 심사 빌드에서 생략하지 않는다.
+첫 스파이크에서 `GitHubCopilotOptions.provider` 전달이 동작하지 않으면 패키지 버전을 최신 호환 조합으로 한 번 조정한다. **0:30 시점까지 Foundry BYOK 실호출이 성공하지 않으면 즉시 폴백을 확정하고 더 붙잡지 않는다.** 폴백은 서버 전용 `COPILOT_GITHUB_TOKEN`을 Container Apps secret으로 주입하는 Copilot 인증으로 전환해 게스트 UX와 MAF 통합을 유지하는 방식이다. 토큰은 브라우저에 전달하지 않는다.
+
+Azure 통합은 Container Apps, Cosmos DB, Managed Identity, Foundry, Aspire 생성 IaC, Monitor로 증명한다.
+
+어떤 경우에도 MAF를 제거하거나 타사 AI SDK로 우회하지 않는다. Cosmos DB, AI 핵심 흐름, 공개 Azure 배포는 심사 빌드에서 생략하지 않는다.
 
 ## 21. 기술 인수 조건
 
@@ -851,8 +801,8 @@ tests → container build → Azure deploy → /healthz → guest E2E smoke
 - [ ] 같은 단계 완료를 반복해도 하트가 중복 적립되지 않는다.
 - [ ] 공개 `*.azurecontainerapps.io` URL에서 로그인 없이 골든 패스가 동작한다.
 - [ ] Managed Identity로 Foundry와 Cosmos DB에 접근한다.
-- [ ] Copilot 런타임이 컨테이너 이미지에 사전 설치되어 첫 요청에서 다운로드되지 않는다.
-- [ ] Bicep 또는 `azd up`으로 배포를 재현할 수 있다.
+- [ ] Copilot 런타임이 wheel에 번들되어 있어 이미지 빌드·런타임 어느 시점에도 다운로드가 발생하지 않는다.
+- [ ] Aspire AppHost와 `azd`로 배포를 재현할 수 있다.
 - [ ] `/healthz`, `/readyz`, `/status/ai`, 배포 스모크 테스트가 통과한다.
 - [ ] 관찰 로그에 민감한 프로필·프롬프트·비밀값이 없다.
 

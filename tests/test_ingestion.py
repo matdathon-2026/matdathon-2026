@@ -35,7 +35,7 @@ def good_candidate(**overrides) -> dict:
     candidate = {
         "title": "자립수당",
         "provider": "보건복지부",
-        "category": "생활",
+        "category": "living",
         "regions": ["ALL"],
         "age": {"min": 18, "max": None},
         "eligibilityText": "보호가 종료된 자립준비청년",
@@ -100,6 +100,16 @@ class TestValidator:
         assert benefit.status == "active"
         assert benefit.source_system == "youthcenter"
         assert benefit.content_hash
+
+    def test_snapshot_preserves_catalog_id_and_maps_korean_category(self):
+        record = make_record(
+            source_system="snapshot",
+            source_id="self-reliance-allowance",
+        )
+        candidate = good_candidate(id="self-reliance-allowance", category="생활")
+        benefit = validate_candidate(candidate, record, today=TODAY)
+        assert benefit.id == "self-reliance-allowance"
+        assert benefit.category == "living"
 
     def test_provenance_comes_from_the_record_not_the_model(self):
         # A curator that invents its own source must not be able to override it.
