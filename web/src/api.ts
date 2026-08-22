@@ -26,13 +26,26 @@ export class ApiError extends Error {
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 120_000);
   try {
     res = await fetch(path, {
       ...init,
+      signal: controller.signal,
       headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
     });
   } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") {
+      throw new ApiError(
+        "TIMEOUT",
+        "응답이 너무 오래 걸려요. 잠시 후 다시 시도해 주세요.",
+        0,
+        true,
+      );
+    }
     throw new ApiError("NETWORK", "네트워크 연결에 문제가 있어요. 잠시 후 다시 시도해 주세요.", 0, true);
+  } finally {
+    clearTimeout(timer);
   }
   if (!res.ok) {
     let code = "ERROR";

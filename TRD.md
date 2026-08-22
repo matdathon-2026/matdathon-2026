@@ -6,7 +6,7 @@
 | 상태 | Hackathon MVP |
 | 작성 기준일 | 2026-08-22 |
 | 배포 목표 | Azure Container Apps |
-| 주요 언어 | Python, TypeScript |
+| 주요 언어 | Python 3.11, TypeScript |
 
 ## 1. 기술 목표
 
@@ -24,7 +24,7 @@
 | 계층 | 선택 | 이유 |
 |---|---|---|
 | UI | React, TypeScript, Vite | 빠른 구현, 반응형 컴포넌트, 타입 안전성 |
-| API | FastAPI, Pydantic | Python MAF 통합, 구조화 검증, SSE 구현 용이 |
+| API | FastAPI, Pydantic (Python 3.11) | Python MAF 통합, 구조화 검증, SSE 구현 용이. Python 3.10은 `agent-framework-github-copilot`와 비호환이라 3.11로 고정 |
 | AI SDK | `github-copilot-sdk` | 필수 기술, 세션·스트리밍·도구 호출 |
 | Agent | `agent-framework-github-copilot` | Copilot SDK를 MAF 에이전트 공급자로 사용 |
 | 모델 | Microsoft Foundry 배포 모델 | Azure Managed Identity 기반 BYOK |
@@ -470,10 +470,11 @@ API 키는 사용하지 않는다. Managed Identity에 필요한 최소 역할�
 
 - AI 도구는 모두 읽기 전용이다.
 - `GitHubCopilotAgent`의 기본 permission handler는 **deny-all**이다. 편의를 위해 `PermissionHandler.approve_all`로 열지 않는다.
-- 앱 도구는 `approval_mode`를 지정하지 않는다. 이 경우 기본 `on_pre_tool_use` 승인 훅이 설치되지 않아 읽기 전용 조회가 권한 프롬프트 없이 실행되고, 셸·파일·URL 같은 위험 요청은 deny-all 기본값에 막힌다.
-- 허용된 네 개의 앱 도구만 세션에 노출한다.
-- 셸, 파일, 임의 URL, MCP 도구는 비활성화한다.
-- 향후 쓰기 도구를 추가하면 해당 도구에만 `approval_mode="always_require"`를 붙이고 `on_permission_request`로 사용자 확인을 연결한다.
+- **실측 동작**: MAF 함수 도구는 실행 시 `PermissionRequestCustomTool`로 게이트되어 deny-all 기본값에 막힌다. 따라서 우리 4개 읽기 전용 도구도 명시적으로 승인해 주지 않으면 "Permission denied"로 실패한다. `approval_mode`를 생략해도 게이트를 우회하지 못한다.
+- 이를 위해 `GitHubCopilotOptions`에 `on_permission_request` 핸들러를 설치한다. 핸들러는 요청 도구 이름이 **허용 목록(정확히 일치)** 에 있을 때만 `PermissionDecisionApproveOnce()`로 승인하고, 그 외에는 `PermissionDecisionUserNotAvailable()`로 거부한다.
+- 허용 목록은 정확히 `{"search_benefits", "get_benefit_detail", "compare_benefits", "get_source_metadata"}` 네 개뿐이다. 이름이 목록에 없으면(셸·파일 쓰기·임의 URL·MCP 등 모든 요청 포함) **거부가 기본값**이다.
+- 결정 클래스는 `copilot.generated.rpc`(`PermissionDecisionApproveOnce`, `PermissionDecisionUserNotAvailable`), 요청 클래스는 `copilot.session_events`(`PermissionRequestCustomTool`)에서 가져온다.
+- 향후 쓰기 도구를 추가하더라도 자동 승인 목록에 절대 넣지 않고, 별도의 사용자 확인 흐름을 통해서만 처리한다.
 
 ## 11. 추천 정확도와 환각 방지
 
@@ -679,24 +680,24 @@ Pop-Location
 uvicorn app.main:app --reload --port 8000
 ```
 
-### 17.2 Copilot 런타임 사전 설치
+### 17.2 Copilot 런타임(번들) 사용
 
-`github-copilot-sdk` wheel은 호환되는 Copilot 런타임 버전을 고정하지만 바이너리는 별도로 받아야 한다. 첫 사용자 요청에서 다운로드하지 않도록 이미지 빌드 시 사전 설치한다.
+**실측 확인**: `github-copilot-sdk` wheel은 Copilot 런타임 바이너리를 **번들로 포함**한다(`copilot/bin/copilot`, Windows에서는 `copilot.exe`). 따라서 별도 다운로드 단계가 필요 없고, `python -m copilot download-runtime` 명령은 사용하지 않는다. 런타임 시점에도 다운로드가 발생하지 않는다.
 
 ```dockerfile
-ENV COPILOT_CLI_EXTRACT_DIR=/opt/copilot-runtime
+# Python 3.11 고정 (3.10 비호환, 3.12 미검증)
+FROM python:3.11-slim AS runtime
 
-RUN pip install --no-cache-dir -r requirements.txt \
-    && python -m copilot download-runtime \
-    && chmod -R a+rX /opt/copilot-runtime
-
+# 런타임 바이너리는 wheel에 번들되어 있으므로 다운로드하지 않는다.
 ENV COPILOT_SKIP_CLI_DOWNLOAD=1
+
+RUN pip install --no-cache-dir -r requirements.txt
 ```
 
-- SDK와 런타임 버전은 lock file과 이미지 digest로 고정한다.
-- 앱 실행 사용자가 `/opt/copilot-runtime`을 읽고 실행할 수 있어야 한다.
-- 배포 후 `/status/ai`에서 런타임 시작, Managed Identity 토큰 획득, 테스트 모델 응답을 확인한다.
-- 심사 요청 시 GitHub Releases에서 런타임을 내려받는 구성은 허용하지 않는다.
+- SDK와 번들 런타임 버전은 `requirements.txt`의 `==` 핀과 이미지 digest로 고정한다.
+- `COPILOT_SKIP_CLI_DOWNLOAD=1`을 설정해 런타임이 어떤 상황에서도 원격 다운로드를 시도하지 않게 한다.
+- 배포 후 `/status/ai`에서 런타임 기동(`runtime: ready`)과 토큰 구성(`auth: configured`)을 확인한다.
+- 심사 요청 시 GitHub Releases에서 런타임을 내려받는 구성은 사용하지 않으며, 번들 런타임만 사용한다.
 
 ### 17.3 반복 가능한 Azure 배포
 
@@ -736,11 +737,13 @@ az containerapp up `
 
 ### 17.5 제출 URL
 
-제출에는 다음과 같은 Azure 원본 호스트를 사용한다.
+제출에는 다음 Azure 원본 호스트를 사용한다(확정값).
 
 ```text
-https://didimheart.<generated-id>.koreacentral.azurecontainerapps.io
+https://didimheart.delightfuldesert-be9dc481.koreacentral.azurecontainerapps.io
 ```
+
+배포 리소스(확정값): 구독 `9b443354-038b-4b2f-beee-8aca3d59ce83`, 리소스 그룹 `rg-didimheart`, Container Apps 환경 `cae-didimheart`, 앱 `didimheart`, 리전 `koreacentral`, System-assigned Managed Identity principalId `42283a07-f37e-4150-b746-06ccaf0cc83d`.
 
 맞다톤 제출 워크플로가 알려진 Azure 호스트 suffix를 검사하므로 커스텀 도메인을 제출하지 않는다.
 
@@ -776,7 +779,7 @@ tests → container build → Azure deploy → /healthz → guest E2E smoke
 
 | 구간 | 산출물 |
 |---|---|
-| 0:00~0:30 | Copilot SDK + MAF + Foundry BYOK 실호출 스파이크, 런타임 다운로드 검증 |
+| 0:00~0:30 | Copilot SDK + MAF + Foundry BYOK 실호출 스파이크, 번들 런타임 검증 |
 | 0:30~1:15 | 저장소 골격, 시드 15건, FastAPI, 사전 필터, 하트 원장 |
 | 1:15~2:30 | matcher/planner, 도구, 구조화 출력 검증 |
 | 2:30~3:30 | React 온보딩·추천·계획·하트 핵심 화면 |
@@ -802,7 +805,7 @@ tests → container build → Azure deploy → /healthz → guest E2E smoke
 - [ ] 같은 단계 완료를 반복해도 하트가 중복 적립되지 않는다.
 - [ ] 공개 `*.azurecontainerapps.io` URL에서 로그인 없이 골든 패스가 동작한다.
 - [ ] Managed Identity로 Foundry와 Cosmos DB에 접근한다.
-- [ ] Copilot 런타임이 컨테이너 이미지에 사전 설치되어 첫 요청에서 다운로드되지 않는다.
+- [ ] Copilot 런타임이 wheel에 번들되어 있어 이미지 빌드·런타임 어느 시점에도 다운로드가 발생하지 않는다.
 - [ ] Bicep 또는 `azd up`으로 배포를 재현할 수 있다.
 - [ ] `/healthz`, `/readyz`, `/status/ai`, 배포 스모크 테스트가 통과한다.
 - [ ] 관찰 로그에 민감한 프로필·프롬프트·비밀값이 없다.

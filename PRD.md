@@ -7,8 +7,8 @@
 | 작성 기준일 | 2026-08-22 |
 | 대상 행사 | 맞다톤 2026 |
 | 제품 유형 | AI 기반 개인 생산성 향상 웹 앱 |
-| 배포 URL | `https://didimheart.<generated-id>.koreacentral.azurecontainerapps.io` (제출 전 실제 값으로 교체) |
-| 저장소 | 팀 리더 계정 소유 공개 GitHub 저장소 (제출 전 실제 값으로 교체) |
+| 배포 URL | https://didimheart.delightfuldesert-be9dc481.koreacentral.azurecontainerapps.io |
+| 저장소 | 팀 리더 계정 소유 공개 GitHub 저장소 |
 
 ## 1. 제품 개요
 
