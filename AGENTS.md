@@ -60,7 +60,7 @@ P0가 끝나기 전에는 P1/P2 기능을 시작하지 않는다.
 - AI: `github-copilot-sdk` + `agent-framework-github-copilot`
 - 모델 연결: GitHub Copilot SDK의 Microsoft Foundry BYOK 구성
 - 인증: 로컬은 Azure CLI, Azure는 System-assigned Managed Identity
-- 데이터: Azure Cosmos DB for NoSQL
+- 데이터: JSON 파일 저장소(MVP) — 저장소 인터페이스로 추상화하여 Azure Cosmos DB for NoSQL로 후속 교체
 - 호스팅: 단일 Azure Container Apps 컨테이너
 - 관찰 가능성: OpenTelemetry + Azure Monitor/Log Analytics
 - 인프라: Bicep + Azure Developer CLI(`azd`)

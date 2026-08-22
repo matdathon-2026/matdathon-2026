@@ -28,7 +28,7 @@
 | AI SDK | `github-copilot-sdk` | 필수 기술, 세션·스트리밍·도구 호출 |
 | Agent | `agent-framework-github-copilot` | Copilot SDK를 MAF 에이전트 공급자로 사용 |
 | 모델 | Microsoft Foundry 배포 모델 | Azure Managed Identity 기반 BYOK |
-| 저장소 | Azure Cosmos DB for NoSQL | 서버리스, JSON 모델, 원장 저장 |
+| 저장소 | JSON 파일 저장소 (MVP) / Azure Cosmos DB for NoSQL (후속) | 저장소 인터페이스로 추상화. MVP는 파일 기반, Cosmos는 §9 설계대로 후속 교체 |
 | 호스팅 | Azure Container Apps | 공개 HTTPS, 자동 확장, 원본 Azure URL |
 | 관찰 | OpenTelemetry, Azure Monitor, Log Analytics | 에이전트·도구·API 지연과 오류 추적 |
 | IaC | Bicep + `azd` | 반복 가능한 Azure 배포 |
@@ -384,7 +384,11 @@ data: {"count":3}
 
 내부 프롬프트, 토큰, 스택 트레이스는 브라우저에 보내지 않는다.
 
-## 9. Cosmos DB 설계
+## 9. 데이터 저장소 설계
+
+**MVP 구현 상태**: 현재 배포는 **JSON 파일 기반 저장소**(`app/repository/memory.py`)를 사용한다. 도메인 저장소 인터페이스(`app/repository/base.py`)를 통해 접근하므로, 아래 Cosmos DB 설계는 인터페이스 교체만으로 붙일 수 있는 **후속 구현 대상**이다. 컨테이너 파일시스템은 휘발성이므로 데모 세션은 일시적이며, 재시작 시 초기화된다(게스트 데모 특성상 허용).
+
+### 9.1 Cosmos DB 목표 설계 (후속)
 
 단일 데이터베이스 `didimheart`에 다음 컨테이너를 사용한다.
 
@@ -397,8 +401,8 @@ data: {"count":3}
 
 ### 멱등성
 
-- 완료 요청의 `idempotency_key`는 `{sessionId}:{planId}:{stepId}:complete`로 만든다.
-- Cosmos DB unique key 또는 transactional batch로 동일 키 중복을 거부한다.
+- 완료 요청의 `idempotency_key`는 `{sessionId}:{planId}:{stepId}:complete`로 만든다. (파일 저장소·Cosmos 공통 규칙이며, 현재 파일 저장소도 이 키로 중복 적립을 거부한다.)
+- Cosmos DB에서는 unique key 또는 transactional batch로 동일 키 중복을 거부한다.
 - 계획 상태 갱신과 원장 삽입은 동일 파티션에서 transactional batch로 수행한다.
 - 완료 취소는 기존 거래를 삭제하지 않고 `reversal` 거래를 추가한다.
 
@@ -794,7 +798,7 @@ tests → container build → Azure deploy → /healthz → guest E2E smoke
 - [ ] AI는 데이터베이스나 하트 원장에 직접 쓰지 못한다.
 - [ ] 같은 단계 완료를 반복해도 하트가 중복 적립되지 않는다.
 - [ ] 공개 `*.azurecontainerapps.io` URL에서 로그인 없이 골든 패스가 동작한다.
-- [ ] Managed Identity로 Foundry와 Cosmos DB에 접근한다.
+- [ ] (후속) Managed Identity로 Foundry와 Cosmos DB에 접근한다. MVP는 파일 저장소를 사용하며 Cosmos 접근은 후속 구현 대상이다.
 - [ ] Copilot 런타임이 wheel에 번들되어 있어 이미지 빌드·런타임 어느 시점에도 다운로드가 발생하지 않는다.
 - [ ] Bicep 또는 `azd up`으로 배포를 재현할 수 있다.
 - [ ] `/healthz`, `/readyz`, `/status/ai`, 배포 스모크 테스트가 통과한다.
