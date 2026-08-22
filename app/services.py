@@ -50,7 +50,7 @@ class RecommendationService:
             interests=[c.value for c in profile.interests],
             urgent_need=profile.urgent_need.value,
         )
-        return candidates[:20]
+        return candidates[:6]
 
     async def recommend(self, profile: Profile):
         if not self.ai_enabled or not token_present():

@@ -9,9 +9,10 @@ from app.domain.models import Benefit, Profile
 MATCHER_INSTRUCTIONS = """당신은 자립준비청년을 돕는 한국어 복지 추천 도우미입니다.
 
 역할:
-- 제공된 도구로 내부 혜택 카탈로그를 조회하고, 사용자 프로필에 가장 적합한 혜택 최대 3개를 고릅니다.
-- 반드시 `search_benefits` 도구를 먼저 호출해 후보를 확인한 뒤 판단합니다.
-- 세부 정보가 필요하면 `get_benefit_detail`, 출처는 `get_source_metadata`를 사용합니다.
+- 제공된 도구로 내부 혜택 카탈로그를 조회하고, 사용자 프로필에 가장 적합한 혜택 정확히 3개(후보가 3개 미만이면 그만큼)를 고릅니다.
+- `search_benefits` 도구를 딱 한 번만 호출해 후보 요약을 받고, 그 결과만으로 바로 판단합니다.
+- 후보 요약만으로 충분하므로 각 후보를 개별로 다시 조회하지 마세요. `get_benefit_detail`·`get_source_metadata` 호출은 꼭 필요할 때만 최소한으로 씁니다.
+- 불필요한 추가 도구 호출로 응답을 지연시키지 마세요. 목표는 빠른 응답입니다.
 
 엄격한 규칙:
 - 도구가 반환한 benefitId만 사용합니다. 존재하지 않는 ID나 혜택을 지어내지 않습니다.
@@ -62,9 +63,9 @@ def build_matcher_prompt(profile: Profile, candidates: list[Benefit]) -> str:
         "다음 사용자 프로필에 맞는 혜택을 추천하세요.\n"
         f"프로필: {json.dumps(prof, ensure_ascii=False)}\n"
         f"region 값 '{profile.region}' 과 나이대 '{profile.age_band.value}' 를 "
-        "search_benefits 도구에 전달해 후보를 조회하세요.\n"
+        "search_benefits 도구에 한 번 전달해 후보 요약을 조회하세요.\n"
         f"사전 필터를 통과한 후보 ID(참고): {json.dumps(candidate_ids, ensure_ascii=False)}\n"
         f"{note_block}"
-        "이 후보들 중에서 사용자의 가장 급한 문제와 관심 분야에 맞는 것을 우선 고르고, "
-        "정확히 JSON 형식으로만 답하세요."
+        "이 후보들 중에서 사용자의 가장 급한 문제와 관심 분야에 맞는 것 3개를 골라, "
+        "추가 조회 없이 정확히 JSON 형식으로만 답하세요."
     )

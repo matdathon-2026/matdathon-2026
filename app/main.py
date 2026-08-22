@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -284,7 +284,10 @@ async def save_plan(body: SavePlanRequest, request: Request):
 
 
 @app.get("/api/v1/plans", response_model=list[PlanOut])
-async def list_plans(session_id: str, request: Request):
+async def list_plans(
+    request: Request,
+    session_id: str = Query(alias="sessionId"),
+):
     plans = await request.app.state.plans.list_plans(session_id)
     return [_plan_out(p) for p in plans]
 
@@ -326,7 +329,10 @@ async def reopen_step(plan_id: str, step_id: str, body: StepActionRequest, reque
 
 # ---------------- hearts / impact ----------------
 @app.get("/api/v1/hearts/ledger", response_model=LedgerOut)
-async def hearts_ledger(session_id: str, request: Request):
+async def hearts_ledger(
+    request: Request,
+    session_id: str = Query(alias="sessionId"),
+):
     balance, txns = await request.app.state.hearts.ledger(session_id)
     return LedgerOut(balance=balance, transactions=[_txn_out(t) for t in txns])
 

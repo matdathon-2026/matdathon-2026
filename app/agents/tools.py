@@ -29,13 +29,15 @@ def set_catalog(benefits: list[Benefit]) -> None:
 
 
 def _summary(b: Benefit) -> dict[str, Any]:
+    elig = b.eligibilityText or ""
+    if len(elig) > 140:
+        elig = elig[:140] + "…"
     return {
         "benefitId": b.id,
         "title": b.title,
         "provider": b.provider,
         "category": b.category.value,
-        "benefitText": b.benefitText,
-        "eligibilityText": b.eligibilityText,
+        "eligibilityText": elig,
         "deadline": b.deadline.isoformat() if b.deadline else None,
         "regions": b.regions,
     }
@@ -58,7 +60,7 @@ def search_benefits(
         limit: 최대 반환 개수 (1~20).
     Returns a list of read-only benefit summaries. Never modifies data.
     """
-    limit = max(1, min(int(limit or 20), 20))
+    limit = max(1, min(int(limit or 8), 8))
     age_band = _age_to_band(age)
     candidates = prefilter(_BENEFITS, region=region, age_band=age_band)
     interests = [c for c in (categories or []) if c]
@@ -79,6 +81,8 @@ def get_benefit_detail(benefit_id: str) -> dict[str, Any]:
         return {"error": "benefit_not_found", "benefitId": benefit_id}
     return {
         **_summary(b),
+        "benefitText": b.benefitText,
+        "eligibilityText": b.eligibilityText,
         "applicationSteps": b.applicationSteps,
         "requiredDocuments": b.requiredDocuments,
         "sourceUrl": b.sourceUrl,

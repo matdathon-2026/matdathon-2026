@@ -1,0 +1,31 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Node / frontend build artifacts (rebuilt inside the image)
+web/node_modules/
+web/dist/
+
+# VCS / IDE
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# Logs & local state
+*.log
+data/state.local.json
+
+# Env & secrets — never copy into the image
+.env
+.env.*
+
+# Docs / spikes not needed at runtime
+spike/
+tests/
+*.md
+azure.yaml
+infra/
