@@ -60,6 +60,14 @@ $env:PYTHONPATH = "."
 
 인프라의 단일 진실 원천은 `infra/DidimHeart.AppHost/AppHost.cs`입니다. 로컬 Docker 데몬은 사용하지 않고 이미지는 Azure ACR에서 빌드합니다.
 
+GitHub Actions의 `Deploy to Azure` 잡은 아래 **Repository variables**가 모두 설정된 경우에만 실행됩니다. 값이 없으면 배포는 건너뛰고 CI만 통과합니다.
+
+- `AZURE_CLIENT_ID`
+- `AZURE_TENANT_ID`
+- `AZURE_SUBSCRIPTION_ID`
+- `AZURE_ENV_NAME`
+- `AZURE_LOCATION`
+
 ```powershell
 azd env new didimheart
 azd env set AZURE_LOCATION koreacentral
