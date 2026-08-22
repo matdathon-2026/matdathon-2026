@@ -699,41 +699,31 @@ RUN pip install --no-cache-dir -r requirements.txt
 - 배포 후 `/status/ai`에서 런타임 기동(`runtime: ready`)과 토큰 구성(`auth: configured`)을 확인한다.
 - 심사 요청 시 GitHub Releases에서 런타임을 내려받는 구성은 사용하지 않으며, 번들 런타임만 사용한다.
 
-### 17.3 반복 가능한 Azure 배포
+### 17.3 실제 배포 경로 (GitHub Actions → ACR → Container App)
 
-저장소에 `azure.yaml`, `infra/main.bicep`, `Dockerfile`을 커밋한다.
+이 구독은 **ACR Tasks가 차단**되어 있어 `az acr build`와 `az containerapp up --source .`(클라우드 빌드)를 사용할 수 없다. 로컬에도 Docker가 없다. 따라서 이미지는 **GitHub Actions 러너에서 빌드**해 ACR로 push하고, 배포는 `az containerapp update`로 이미지를 교체한다.
 
-```powershell
-azd auth login
-azd env new didimheart-hackathon
-azd up
-```
-
-`azd up`은 다음을 수행해야 한다.
-
-1. Azure 리소스 프로비저닝
-2. Managed Identity와 역할 할당
-3. 프런트엔드 빌드
-4. 컨테이너 이미지 빌드·푸시
-5. Container App 배포
-6. `FOUNDRY_RESOURCE_URL`, `FOUNDRY_MODEL`, `COSMOS_ENDPOINT` 설정
-7. Azure 원본 배포 URL 출력
-
-### 17.4 긴급 단일 명령 배포
-
-IaC가 막힐 때만 다음 경로를 사용한다.
+1. 이미지 빌드·푸시: `.github/workflows/build-image.yml`
+   - 트리거: `main` push(문서만 변경 시 건너뜀) 또는 수동 실행
+   - ACR 자격증명은 GitHub Secrets(`ACR_LOGIN_SERVER`, `ACR_USERNAME`, `ACR_PASSWORD`)로만 주입하며 저장소·이미지·문서 어디에도 평문으로 두지 않는다.
+   - 산출물: `cabb6d0f60bdacr.azurecr.io/didimheart:<commit-sha>` 와 `:latest`
+2. 배포:
 
 ```powershell
-az containerapp up `
+az containerapp update `
   --name didimheart `
   --resource-group rg-didimheart `
-  --location koreacentral `
-  --source . `
-  --ingress external `
-  --target-port 8000
+  --image cabb6d0f60bdacr.azurecr.io/didimheart:<commit-sha>
+# COPILOT_GITHUB_TOKEN 은 Container Apps secret 으로 주입한다.
 ```
 
-이후 Managed Identity와 역할 할당은 반드시 별도로 적용한다. 최종 제출 전에는 가능한 경우 Bicep에 역반영한다.
+3. 배포 직후 `/status/ai`로 런타임 기동(`runtime: ready`)과 인증(`auth: configured`)을 비밀값 노출 없이 확인한다.
+
+배포 리소스: RG `rg-didimheart`, CAE `cae-didimheart`, App `didimheart`, ACR `cabb6d0f60bdacr`, Log Analytics `workspace-rgdidimheartnHRw`, 리전 `koreacentral`.
+
+### 17.4 참고: azd / IaC 정의
+
+`azure.yaml` + `infra/main.bicep`은 동일 토폴로지(Container Apps 환경, 앱, Log Analytics, System-assigned Managed Identity, 포트 8000, `/healthz`·`/readyz` 프로브)를 **재현 가능한 형태로 문서화한 증빙**이다. 위 ACR Tasks 제한 때문에 라이브 배포는 17.3 경로로 수행한다. 제한이 없는 환경에서는 `az deployment group create`로 Bicep을 그대로 적용할 수 있다.
 
 ### 17.5 제출 URL
 
