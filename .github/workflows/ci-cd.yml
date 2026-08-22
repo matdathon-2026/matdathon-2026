@@ -1,0 +1,172 @@
+name: CI/CD
+
+# CI (lint, tests, builds) runs on every PR and push to main.
+# CD runs only on push to main: builds the container image inside Azure with
+# `az acr build` (no Docker on the runner), then `azd provision` + `azd deploy`
+# applies the Aspire AppHost model. Auth is OIDC federated credentials — no
+# stored secrets. See AGENTS.md §3/§14 for the deployment requirements.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  backend:
+    name: Backend lint + tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # Matches the runtime image (Dockerfile): 3.11 is the verified
+          # agent-framework-github-copilot-compatible version.
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Ruff lint
+        run: ruff check .
+
+      - name: Pytest
+        run: pytest -q
+
+  web:
+    name: Web build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check + build
+        run: npm run build
+
+  infra:
+    name: AppHost build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Build Aspire AppHost
+        run: dotnet build infra/DidimHeart.AppHost/DidimHeart.AppHost.csproj --nologo
+
+  deploy:
+    name: Deploy to Azure
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: [backend, web, infra]
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-didimheart
+      cancel-in-progress: false
+    env:
+      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      AZURE_ENV_NAME: ${{ vars.AZURE_ENV_NAME }}
+      AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: Azure/setup-azd@v2
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: azd login (federated)
+        run: >-
+          azd auth login
+          --client-id "$AZURE_CLIENT_ID"
+          --federated-credential-provider github
+          --tenant-id "$AZURE_TENANT_ID"
+
+      - name: Create azd environment
+        run: azd env new "$AZURE_ENV_NAME" --no-prompt
+
+      # The 온통청년 API key is optional; when the secret is absent the AppHost
+      # falls back to its "unset" placeholder and the repository snapshot.
+      - name: Pass optional YouthCenter API key
+        env:
+          YOUTHCENTER_API_KEY: ${{ secrets.YOUTHCENTER_API_KEY }}
+        run: |
+          if [ -n "$YOUTHCENTER_API_KEY" ]; then
+            azd env set YouthCenterApiKey "$YOUTHCENTER_API_KEY"
+          fi
+
+      - name: Build image in ACR
+        run: |
+          set -euo pipefail
+          RG=$(az group list --tag azd-env-name="$AZURE_ENV_NAME" --query '[0].name' -o tsv)
+          ACR=""
+          if [ -n "$RG" ]; then
+            ACR=$(az acr list -g "$RG" --query '[0].name' -o tsv)
+          fi
+          if [ -z "$ACR" ]; then
+            # First-ever run: no registry yet. Provision once with the
+            # placeholder image the AppHost defines, then retry.
+            echo "No ACR found; bootstrapping infrastructure first."
+            azd provision --no-prompt
+            RG=$(az group list --tag azd-env-name="$AZURE_ENV_NAME" --query '[0].name' -o tsv)
+            ACR=$(az acr list -g "$RG" --query '[0].name' -o tsv)
+          fi
+          LOGIN_SERVER=$(az acr show -n "$ACR" --query loginServer -o tsv)
+          az acr build --registry "$ACR" --image "didimheart:${GITHUB_SHA}" .
+          azd env set DIDIMHEART_IMAGE "$LOGIN_SERVER/didimheart:${GITHUB_SHA}"
+
+      - name: Provision infrastructure
+        run: azd provision --no-prompt
+
+      - name: Deploy services
+        run: azd deploy --no-prompt
+
+      - name: Smoke test /healthz
+        run: |
+          set -euo pipefail
+          DOMAIN=$(azd env get-value AZURE_CONTAINER_APPS_ENVIRONMENT_DEFAULT_DOMAIN)
+          URL="https://api.${DOMAIN}/healthz"
+          echo "Checking $URL"
+          CODE=000
+          for i in $(seq 1 10); do
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$URL" || echo 000)
+            if [ "$CODE" = "200" ]; then
+              break
+            fi
+            sleep 15
+          done
+          if [ "$CODE" != "200" ]; then
+            echo "Health check failed with HTTP $CODE" >&2
+            exit 1
+          fi
+          echo "### 배포 완료 :rocket:" >> "$GITHUB_STEP_SUMMARY"
+          echo "- App: https://api.${DOMAIN}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Image: didimheart:${GITHUB_SHA}" >> "$GITHUB_STEP_SUMMARY"

@@ -4,6 +4,7 @@ of the app (health, catalog) keeps working.
 """
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import date, datetime, timezone
 
@@ -19,6 +20,8 @@ from app.domain import hearts
 from app.domain.filters import prefilter, rank_by_interest
 from app.domain.models import ActionPlan, ActionStep, HeartTransaction, Profile
 from app.repository.base import Repository
+
+logger = logging.getLogger(__name__)
 
 
 class AppError(Exception):
@@ -85,6 +88,7 @@ class RecommendationService:
                     503,
                     retryable=True,
                 ) from exc
+        logger.warning("recommendation output rejected after retries: %s", last_err)
         raise AppError(
             "AI_INVALID_OUTPUT",
             "추천 결과를 확인하지 못했어요. 다시 시도해 주세요.",

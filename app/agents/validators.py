@@ -8,11 +8,10 @@
 from __future__ import annotations
 
 import re
-import uuid
 from datetime import date
 from typing import Any
 
-from app.domain.models import ActionPlan, ActionStep, Benefit
+from app.domain.models import ActionStep, Benefit
 from app.schemas import BenefitCard
 
 _FIT_ALLOWED = {"high", "medium", "low"}
