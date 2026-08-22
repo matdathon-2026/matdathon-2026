@@ -20,7 +20,7 @@ import type {
   RecommendationResponse,
 } from "./types";
 
-type Screen = "landing" | "onboarding" | "recs" | "plan" | "board" | "impact";
+type Screen = "landing" | "onboarding" | "recs" | "plan" | "board" | "impact" | "sponsor";
 
 function ErrorBanner({ err, onRetry }: { err: ApiError; onRetry?: () => void }) {
   return (
@@ -52,7 +52,7 @@ function Loading({ label }: { label: string }) {
 }
 
 /* ---------------- Landing ---------------- */
-function Landing({ onStart }: { onStart: () => void }) {
+function Landing({ onStart, onSponsor }: { onStart: () => void; onSponsor: () => void }) {
   return (
     <div className="content">
       <div className="card">
@@ -63,6 +63,9 @@ function Landing({ onStart }: { onStart: () => void }) {
         </p>
         <button className="btn btn-primary" onClick={onStart}>
           시작하기
+        </button>
+        <button className="btn btn-ghost mt" onClick={onSponsor}>
+          🤝 후원자이신가요? 후원 임팩트 보기
         </button>
       </div>
       <div className="card">
@@ -415,6 +418,15 @@ function PlanScreen({
 
       <div className="card">
         <h3>실행 단계</h3>
+        {!saved && (
+          <div className="alert alert-info" role="note" style={{ fontSize: 13 }}>
+            <span aria-hidden>💾</span>
+            <div>
+              아래 <strong>‘이 계획 저장하고 시작하기’</strong>를 누르면 단계 완료 버튼이
+              켜지고, 완료할 때마다 하트가 적립돼요.
+            </div>
+          </div>
+        )}
         {plan.steps.map((s, i) => {
           const done = s.status === "done";
           const awards = i < 3;
@@ -425,6 +437,7 @@ function PlanScreen({
                 aria-label={done ? "완료 취소" : "완료 표시"}
                 aria-pressed={done}
                 disabled={!saved || togglingStep === s.id}
+                title={!saved ? "먼저 계획을 저장해 주세요" : undefined}
                 onClick={() => onToggle(s.id, !done)}
               >
                 {done ? "✓" : ""}
@@ -456,17 +469,6 @@ function PlanScreen({
         </div>
       )}
 
-      {plan.applyUrl && (
-        <a
-          className="btn btn-ghost"
-          href={plan.applyUrl}
-          target="_blank"
-          rel="noreferrer noopener"
-        >
-          🔗 공식 신청 페이지 열기
-        </a>
-      )}
-
       {!saved && (
         <button className="btn btn-primary" onClick={onSave} disabled={saving}>
           {saving ? "저장 중…" : "이 계획 저장하고 시작하기"}
@@ -477,6 +479,17 @@ function PlanScreen({
           <span aria-hidden>✅</span>
           <div>계획이 저장됐어요. 단계를 완료하면 하트가 적립돼요.</div>
         </div>
+      )}
+
+      {(plan.applyUrl || plan.sourceUrl) && (
+        <a
+          className="btn btn-ghost"
+          href={plan.applyUrl || plan.sourceUrl}
+          target="_blank"
+          rel="noreferrer noopener"
+        >
+          🔗 공식 신청 페이지 열기
+        </a>
       )}
     </div>
   );
@@ -543,38 +556,113 @@ function Board({
   );
 }
 
-/* ---------------- Impact (후원 임팩트) ---------------- */
-function ImpactScreen({ impact, loading }: { impact: Impact | null; loading: boolean }) {
-  if (loading) return <div className="content"><Loading label="임팩트를 불러오는 중" /></div>;
+/* ---------------- Sponsor impact (후원 임팩트) ---------------- */
+function SponsorImpact({
+  impact,
+  loading,
+  err,
+  onRetry,
+  publicView,
+  onBackToApp,
+}: {
+  impact: Impact | null;
+  loading: boolean;
+  err: ApiError | null;
+  onRetry: () => void;
+  publicView?: boolean;
+  onBackToApp?: () => void;
+}) {
+  if (loading)
+    return <div className="content"><Loading label="후원 임팩트를 불러오는 중" /></div>;
+
+  // A demo heart is funded by 1,000원 of sponsorship (demo-only allocation rule).
+  const perHeartKrw = 1000;
+  const allocated = impact?.allocatedHearts ?? 0;
+  const fundedKrw = allocated * perHeartKrw;
+
   return (
     <div className="content">
       <div className="card">
+        {publicView && <div className="stepper">후원자 화면 · 로그인 없이 열람</div>}
         <h2>후원 임팩트</h2>
         <p className="lead">
-          후원자의 마음이 청년의 실행으로 이어지는 과정을 데모로 보여줘요. (실제 결제·정산은
-          포함되지 않은 시뮬레이션이에요.)
+          후원자의 마음이 자립준비청년의 실제 실행으로 이어지는 과정을 보여줘요.
         </p>
-        <div className="stats">
-          <div className="stat">
-            <div className="num">
-              {impact ? impact.sponsorTotalKrw.toLocaleString() : 0}원
+        <div className="alert alert-warn" role="note" style={{ fontSize: 13 }}>
+          <span aria-hidden>ℹ️</span>
+          <div>
+            <strong>시뮬레이션 안내</strong>
+            <div>
+              이 화면의 후원금·하트·배분은 데모 데이터예요. 실제 결제, 출금, 계좌이체는
+              일어나지 않아요.
             </div>
-            <div className="lbl">데모 후원금</div>
-          </div>
-          <div className="stat">
-            <div className="num">❤️ {impact?.allocatedHearts ?? 0}</div>
-            <div className="lbl">배분 예정 하트</div>
-          </div>
-          <div className="stat">
-            <div className="num">{impact?.completedActions ?? 0}</div>
-            <div className="lbl">완료된 실행</div>
-          </div>
-          <div className="stat">
-            <div className="num">{impact?.activePlans ?? 0}</div>
-            <div className="lbl">진행 중인 계획</div>
           </div>
         </div>
       </div>
+
+      {err && (
+        <div className="content" style={{ padding: 0 }}>
+          <ErrorBanner err={err} onRetry={onRetry} />
+        </div>
+      )}
+
+      {impact && (
+        <>
+          <div className="card">
+            <div className="stats">
+              <div className="stat">
+                <div className="num">{impact.sponsorTotalKrw.toLocaleString()}원</div>
+                <div className="lbl">데모 후원금</div>
+              </div>
+              <div className="stat">
+                <div className="num">❤️ {impact.allocatedHearts}</div>
+                <div className="lbl">배분 예정 하트</div>
+              </div>
+              <div className="stat">
+                <div className="num">{impact.completedActions}</div>
+                <div className="lbl">완료된 실행</div>
+              </div>
+              <div className="stat">
+                <div className="num">{impact.activePlans}</div>
+                <div className="lbl">진행 중인 계획</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="card">
+            <h3>후원이 청년의 실행과 이렇게 연결돼요</h3>
+            <ol className="reasons">
+              <li>
+                후원자가 <strong>{impact.sponsorTotalKrw.toLocaleString()}원</strong>을 데모로
+                후원했어요.
+              </li>
+              <li>
+                청년이 실행 계획의 단계를 완료할 때마다 서버 규칙에 따라 하트가 적립돼요.
+                지금까지 <strong>{impact.completedActions}건</strong>의 실행이 완료됐어요.
+              </li>
+              <li>
+                완료된 실행에 <strong>❤️ {impact.allocatedHearts}</strong>개의 하트가 배분될
+                예정이고, 이는 약 <strong>{fundedKrw.toLocaleString()}원</strong>의 후원과
+                연결돼요. (하트 1개 = {perHeartKrw.toLocaleString()}원 데모 환산)
+              </li>
+              <li>
+                현재 <strong>{impact.activePlans}개</strong>의 계획이 진행 중이라, 앞으로도
+                후원이 실제 실행으로 이어질 거예요.
+              </li>
+            </ol>
+            <p className="muted">
+              하트 수량과 배분은 사람이나 AI가 임의로 정하지 않고, 완료된 실행에 대한 서버의
+              고정 규칙으로만 계산돼요.
+            </p>
+          </div>
+
+          {publicView && onBackToApp && (
+            <button className="btn btn-primary" onClick={onBackToApp}>
+              나도 자립 지원 찾아보기
+            </button>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -604,6 +692,7 @@ export default function App() {
 
   const [impact, setImpact] = useState<Impact | null>(null);
   const [impactLoading, setImpactLoading] = useState(false);
+  const [impactErr, setImpactErr] = useState<ApiError | null>(null);
 
   const [lastProfile, setLastProfile] = useState<ProfileInput | null>(null);
 
@@ -725,19 +814,59 @@ export default function App() {
     }
   }
 
-  async function openImpact() {
-    setScreen("impact");
+  async function loadImpact() {
     setImpactLoading(true);
+    setImpactErr(null);
     try {
       setImpact(await api.impact());
-    } catch {
-      /* non-blocking */
+    } catch (e) {
+      if (e instanceof ApiError) setImpactErr(e);
+      else setImpactErr(new ApiError("NETWORK_ERROR", "임팩트를 불러오지 못했어요.", 0));
     } finally {
       setImpactLoading(false);
     }
   }
 
-  const showTabs = screen !== "landing" && screen !== "onboarding";
+  async function openImpact() {
+    setScreen("impact");
+    await loadImpact();
+  }
+
+  function goSponsor() {
+    if (window.location.pathname !== "/sponsor") {
+      window.history.pushState({}, "", "/sponsor");
+    }
+    setScreen("sponsor");
+    void loadImpact();
+  }
+
+  function leaveSponsor(target: Screen) {
+    if (window.location.pathname !== "/") {
+      window.history.pushState({}, "", "/");
+    }
+    setScreen(target);
+  }
+
+  // Deep-link support: /sponsor opens the public sponsor view on load & back/forward.
+  useEffect(() => {
+    if (window.location.pathname === "/sponsor") {
+      setScreen("sponsor");
+      void loadImpact();
+    }
+    const onPop = () => {
+      if (window.location.pathname === "/sponsor") {
+        setScreen("sponsor");
+        void loadImpact();
+      } else {
+        setScreen("landing");
+      }
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const showTabs = screen !== "landing" && screen !== "onboarding" && screen !== "sponsor";
 
   return (
     <div className="app">
@@ -753,7 +882,9 @@ export default function App() {
         )}
       </header>
 
-      {screen === "landing" && <Landing onStart={() => setScreen("onboarding")} />}
+      {screen === "landing" && (
+        <Landing onStart={() => setScreen("onboarding")} onSponsor={goSponsor} />
+      )}
       {screen === "onboarding" && (
         <Onboarding busy={onbBusy} err={onbErr} onSubmit={submitProfile} />
       )}
@@ -792,7 +923,24 @@ export default function App() {
           }}
         />
       )}
-      {screen === "impact" && <ImpactScreen impact={impact} loading={impactLoading} />}
+      {screen === "impact" && (
+        <SponsorImpact
+          impact={impact}
+          loading={impactLoading}
+          err={impactErr}
+          onRetry={loadImpact}
+        />
+      )}
+      {screen === "sponsor" && (
+        <SponsorImpact
+          impact={impact}
+          loading={impactLoading}
+          err={impactErr}
+          onRetry={loadImpact}
+          publicView
+          onBackToApp={() => leaveSponsor("onboarding")}
+        />
+      )}
 
       {showTabs && (
         <nav className="tabbar" aria-label="주요 화면">
