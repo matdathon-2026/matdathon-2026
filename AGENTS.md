@@ -35,9 +35,10 @@
 |---|---|
 | P0 | 게스트 프로필 입력 → 개인화 추천 3건 → 추천 이유·근거 확인 → 실행 계획 생성 → 단계 완료 → 하트 적립 → 후원 임팩트 확인 |
 | P0 | GitHub Copilot SDK를 Microsoft Agent Framework의 `GitHubCopilotAgent` 공급자로 실제 호출 |
+| P0 | 혜택 상세와 최대 3개 비교(`compare_benefits` 도구 포함) |
 | P0 | Azure Container Apps 공개 배포, Cosmos DB 영속화, 모바일 반응형 UI, 오류 상태 |
 | P0 | `PRD.md`, `TRD.md`, 배포 URL, 커밋 해시의 일치 |
-| P1 | SSE 스트리밍, 추천 비교, Azure Monitor 대시보드 |
+| P1 | SSE 스트리밍 추천(P0는 단일 응답 JSON 추천 API로 대체), Azure Monitor 대시보드 |
 | P2 | 관리자 수집 화면, 실제 결제·정산, OCR 증빙, 회원가입 |
 
 P0가 끝나기 전에는 P1/P2 기능을 시작하지 않는다.
@@ -65,6 +66,28 @@ P0가 끝나기 전에는 P1/P2 기능을 시작하지 않는다.
 - 인프라: Bicep + Azure Developer CLI(`azd`)
 
 복잡도를 줄이기 위해 React 빌드 결과를 FastAPI가 함께 제공한다. 별도 마이크로서비스나 메시지 큐는 MVP에 추가하지 않는다.
+
+## 7. 저장소 구조와 제출 산출물
+
+제출 커밋에서 다음이 저장소 **루트**에 대소문자 그대로 존재해야 한다. 맞다톤 제출 검증 워크플로가 `PRD.md`와 `TRD.md`의 존재를 하드 체크하며, 없으면 제출 이슈가 자동으로 닫힌다.
+
+```text
+/
+├── PRD.md                 # 심사 에이전트의 제품 기준 문서 (필수)
+├── TRD.md                 # 심사 에이전트의 기술 기준 문서 (필수)
+├── AGENTS.md              # 구현 규칙 (보조)
+├── README.md              # 실행 방법과 데모 URL (보조)
+├── azure.yaml             # azd 정의
+├── Dockerfile
+├── infra/main.bicep
+├── data/benefits.seed.json
+├── app/                   # FastAPI, 에이전트, 도메인, 도구
+└── web/                   # React + TypeScript + Vite
+```
+
+- 저장소는 **팀 리더 GitHub 계정 소유의 공개 저장소**여야 한다. 조직 소유 저장소는 검증에서 거부되므로 리더 계정으로 fork 또는 신규 생성한다.
+- 제출 URL 호스트는 `*.azurecontainerapps.io` 같은 Azure 원본 호스트여야 하며 커스텀 도메인은 거부된다.
+- 문서와 구현이 어긋난 채로 제출하지 않는다. 문서 수정은 제출 커밋에 포함한다.
 
 ## 8. AI 구현 규칙
 

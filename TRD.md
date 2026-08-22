@@ -63,7 +63,6 @@ flowchart LR
 - API와 Copilot SDK 런타임을 같은 컨테이너에 둔다.
 - 백엔드에서 SDK가 번들 런타임을 관리하게 해 별도 공개 CLI 포트를 만들지 않는다.
 - 트래픽이 커지면 Copilot CLI headless 서버를 별도 사이드카/서비스로 분리하지만 MVP에는 적용하지 않는다.
-- azure cloud에 배포한다
 
 ## 4. 컴포넌트
 
@@ -72,7 +71,7 @@ flowchart LR
 책임:
 
 - 게스트 세션 생성과 최소 프로필 입력
-- 추천 SSE 렌더링
+- 추천 결과 렌더링과 진행 단계 표시(P0: 단일 응답, P1: SSE)
 - 혜택 상세·비교
 - 계획 초안 확인·수정·저장
 - 진행 단계 완료
@@ -353,7 +352,8 @@ AI 출력에는 보상 규칙이나 하트 수량을 포함하지 않는다. 서
 | GET | `/status/ai` | 비차단 AI 런타임·모델 상태 |
 | POST | `/api/v1/demo-sessions` | 게스트 세션 생성 |
 | PUT | `/api/v1/demo-sessions/{id}/profile` | 프로필 저장 |
-| POST | `/api/v1/recommendations/stream` | SSE 추천 스트림 |
+| POST | `/api/v1/recommendations` | 추천 생성(P0, 단일 JSON 응답) |
+| POST | `/api/v1/recommendations/stream` | 동일 입력의 SSE 스트림(P1) |
 | GET | `/api/v1/benefits/{id}` | 혜택 상세 |
 | POST | `/api/v1/benefits/compare` | 혜택 비교 |
 | POST | `/api/v1/plans/draft` | AI 계획 초안 |
@@ -365,6 +365,8 @@ AI 출력에는 보상 규칙이나 하트 수량을 포함하지 않는다. 서
 | GET | `/api/v1/impact` | 비식별 집계 임팩트 |
 
 ### SSE 이벤트
+
+두 엔드포인트는 동일한 워크플로와 동일한 검증기를 공유한다. `/api/v1/recommendations`가 P0 경로이며 최종 검증된 결과만 한 번에 반환한다. SSE는 같은 결과에 진행 단계를 덧붙이는 P1 업그레이드이므로, SSE가 완성되지 않아도 골든 패스는 동작해야 한다.
 
 ```text
 event: status
@@ -467,10 +469,11 @@ API 키는 사용하지 않는다. Managed Identity에 필요한 최소 역할�
 ### 10.3 권한 처리
 
 - AI 도구는 모두 읽기 전용이다.
-- SDK의 기본 전체 승인(`approve_all`)에 의존하지 않는다.
+- `GitHubCopilotAgent`의 기본 permission handler는 **deny-all**이다. 편의를 위해 `PermissionHandler.approve_all`로 열지 않는다.
+- 앱 도구는 `approval_mode`를 지정하지 않는다. 이 경우 기본 `on_pre_tool_use` 승인 훅이 설치되지 않아 읽기 전용 조회가 권한 프롬프트 없이 실행되고, 셸·파일·URL 같은 위험 요청은 deny-all 기본값에 막힌다.
 - 허용된 네 개의 앱 도구만 세션에 노출한다.
 - 셸, 파일, 임의 URL, MCP 도구는 비활성화한다.
-- 향후 쓰기 도구를 추가하면 `approval_mode="always_require"`와 사용자 확인을 연결한다.
+- 향후 쓰기 도구를 추가하면 해당 도구에만 `approval_mode="always_require"`를 붙이고 `on_permission_request`로 사용자 확인을 연결한다.
 
 ## 11. 추천 정확도와 환각 방지
 
@@ -592,7 +595,7 @@ HTTP recommendation request
 
 - Copilot SDK/MAF를 mock provider로 실행해 도구 호출 계약 검증
 - Cosmos Emulator 또는 repository fake로 transactional 동작 검증
-- SSE 이벤트 순서와 종료 검증
+- SSE 이벤트 순서와 종료 검증(P1 구현 시)
 - 모델이 잘못된 ID, URL, 금액을 반환할 때 거부 확인
 
 ### E2E 테스트
@@ -603,8 +606,8 @@ HTTP recommendation request
 4. 출처 링크 존재 확인
 5. 계획 초안 생성·저장
 6. 단계 완료
-7. 하트 원장 +1 확인
-8. 같은 요청 재전송 후 원장 수 불변 확인
+7. 하트 원장에 `earn` 거래 1건이 추가되고 잔액이 +10이 된다
+8. 같은 요청 재전송 후 원장 거래 수와 잔액이 모두 불변임을 확인
 9. 임팩트 집계 확인
 
 ### 배포 스모크 테스트
@@ -782,7 +785,11 @@ tests → container build → Azure deploy → /healthz → guest E2E smoke
 | 4:50~5:10 | 문서와 실제 구현 동기화, 시연 데이터 |
 | 5:10~5:30 | 제출 커밋 고정, URL·문서·게스트 접근 확인, 제출 |
 
-첫 스파이크에서 `GitHubCopilotOptions.provider` 전달이 동작하지 않으면 패키지 버전을 최신 호환 조합으로 한 번 조정한다. 그래도 실패하면 서버 전용 `COPILOT_GITHUB_TOKEN`을 Container Apps secret으로 주입하는 Copilot 인증으로 전환해 게스트 UX와 MAF 통합을 유지한다. 토큰은 브라우저에 전달하지 않는다. MAF를 제거하거나 타사 AI SDK로 우회하지 않는다. Cosmos DB, AI 핵심 흐름, 공개 Azure 배포는 심사 빌드에서 생략하지 않는다.
+첫 스파이크에서 `GitHubCopilotOptions.provider` 전달이 동작하지 않으면 패키지 버전을 최신 호환 조합으로 한 번 조정한다. **0:30 시점까지 Foundry BYOK 실호출이 성공하지 않으면 즉시 폴백을 확정하고 더 붙잡지 않는다.** 폴백은 서버 전용 `COPILOT_GITHUB_TOKEN`을 Container Apps secret으로 주입하는 Copilot 인증으로 전환해 게스트 UX와 MAF 통합을 유지하는 방식이다. 토큰은 브라우저에 전달하지 않는다.
+
+공식 평가 기준은 Azure AI·모델 서비스 사용을 필수로 요구하거나 가산점으로 평가하지 않는다. 즉 Foundry BYOK는 Azure 통합 점수의 필수 요소가 아니며, Azure 18% 점수는 Container Apps, Cosmos DB, Managed Identity, Bicep/`azd`, Monitor에서 확보한다. 따라서 BYOK는 "되면 좋은 것"으로 두고 위 시간 상한을 지킨다.
+
+어떤 경우에도 MAF를 제거하거나 타사 AI SDK로 우회하지 않는다. Cosmos DB, AI 핵심 흐름, 공개 Azure 배포는 심사 빌드에서 생략하지 않는다.
 
 ## 21. 기술 인수 조건
 
