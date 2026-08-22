@@ -1,0 +1,33 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+data/*.local.json
+*.local.db
+
+# Copilot runtime (downloaded/bundled, not committed)
+.copilot-runtime/
+
+# Node / frontend
+web/node_modules/
+web/dist/
+node_modules/
+dist/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# Azure / azd
+.azure/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
