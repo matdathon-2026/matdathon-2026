@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Sdk Name="Aspire.AppHost.Sdk" Version="9.5.2" />
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UserSecretsId>71b06ea4-7223-490d-9ab3-ab50f4abd02c</UserSecretsId>
+    <!-- ASPIREAZURE002: PublishAsScheduledAzureContainerAppJob is still marked
+         experimental in Aspire 9.5.x. Pinned versions keep this stable. -->
+    <NoWarn>$(NoWarn);ASPIREAZURE002;ASPIRECOMPUTE001</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.AppHost" Version="9.5.2" />
+    <PackageReference Include="Aspire.Hosting.Azure.AppContainers" Version="9.5.2" />
+    <PackageReference Include="Aspire.Hosting.Azure.CognitiveServices" Version="9.5.2" />
+    <PackageReference Include="Aspire.Hosting.Azure.CosmosDB" Version="9.5.2" />
+    <PackageReference Include="Aspire.Hosting.Azure.Storage" Version="9.5.2" />
+  </ItemGroup>
+
+</Project>

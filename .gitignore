@@ -1,0 +1,24 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.env
+
+# Node
+node_modules/
+web/dist/
+
+# .NET / Aspire
+bin/
+obj/
+
+# azd
+.azure/
+
+# Aspire publish output
+.aspire-manifest-check/
+.aspire-publish-check/
+.aspire-check/
+aspire-output/

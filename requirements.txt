@@ -1,0 +1,17 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.0
+httpx==0.28.1
+
+azure-identity==1.19.0
+azure-cosmos==4.9.0
+azure-storage-blob==12.24.0
+
+# agent-framework-github-copilot pins the SDK to this exact version.
+github-copilot-sdk==1.0.2
+agent-framework-github-copilot==1.0.3
+
+# Observability is Container Apps stdout -> Log Analytics. The OpenTelemetry
+# distro is left out on purpose: it pins opentelemetry-* versions that conflict
+# with the Copilot SDK's own dependencies.

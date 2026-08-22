@@ -1,0 +1,13 @@
+.git
+.venv
+__pycache__
+**/__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+web/node_modules
+web/dist
+infra/**/bin
+infra/**/obj
+.azure
+tests

@@ -31,7 +31,7 @@
 | 저장소 | Azure Cosmos DB for NoSQL | 서버리스, JSON 모델, 원장 저장 |
 | 호스팅 | Azure Container Apps | 공개 HTTPS, 자동 확장, 원본 Azure URL |
 | 관찰 | OpenTelemetry, Azure Monitor, Log Analytics | 에이전트·도구·API 지연과 오류 추적 |
-| IaC | Bicep + `azd` | 반복 가능한 Azure 배포 |
+| IaC | .NET Aspire AppHost + `azd` | 인프라를 코드로 모델링하고 Bicep을 생성해 반복 배포 |
 | 테스트 | pytest, Vitest, Playwright | 도메인·UI·E2E 분리 |
 
 ## 3. 시스템 컨텍스트
@@ -98,7 +98,26 @@ flowchart LR
 
 ### 4.3 Benefit Catalog
 
-MVP에서는 `data/benefits.seed.json`을 애플리케이션 시작 시 Cosmos DB에 upsert한다. 동일한 `sourceId`와 `verifiedAt`이면 재삽입하지 않는다.
+카탈로그는 **Aspire로 배포되는 Azure Container Apps 예약 작업(`ingest`)** 이 자동으로 채운다. 앱 시작 시 시드를 밀어 넣는 방식이 아니라, 작업이 카탈로그의 유일한 writer이고 API와 에이전트는 읽기만 한다.
+
+파이프라인 단계:
+
+```text
+fetch(허용목록 HTTP) → archive(Blob 원본 보관) → normalize(CatalogCuratorAgent)
+  → validate(결정론적 검증기) → upsert(Cosmos, contentHash 기반 멱등)
+```
+
+| 단계 | 모듈 | 규칙 |
+|---|---|---|
+| fetch | `app/ingestion/sources/` | 온통청년(검증됨), data.go.kr(미검증·기본 비활성), 저장소 스냅샷(폴백) |
+| archive | `app/ingestion/archive.py` | 원본 payload를 Blob에 보관해 추천 근거를 추적 가능하게 유지 |
+| normalize | `app/ingestion/normalizer.py` | MAF + Copilot SDK. **도구 0개**, 텍스트 변환만 수행 |
+| validate | `app/ingestion/validator.py` | 출처·날짜·스키마 검증. 통과 못하면 저장하지 않음 |
+| upsert | `app/ingestion/repository.py` | `contentHash`가 같으면 건너뜀. AI는 DB에 쓰지 못함 |
+
+수집기가 접근할 수 있는 호스트는 `app/ingestion/allowlist.py`의 허용목록으로 HTTP 클라이언트 계층에서 강제한다. 리다이렉트도 따르지 않는다.
+
+`sourceUrl`, `sourceAgency`, `sourceSystem`, `sourceId`, `contentHash`는 항상 수집기가 채우며 모델 출력으로 덮어쓸 수 없다.
 
 필수 데이터:
 
@@ -618,16 +637,32 @@ Invoke-RestMethod "$env:APP_URL/readyz"
 
 ## 16. Azure 인프라
 
+인프라는 `infra/DidimHeart.AppHost`의 **.NET Aspire AppHost**로 모델링한다. 손으로 쓴 Bicep을 유지하지 않고, `azd`가 AppHost에서 Bicep을 생성한다.
+
 ### 필수 리소스
 
-- Resource Group
-- Azure Container Registry
-- Azure Container Apps Environment
-- Azure Container App
-- Azure Cosmos DB for NoSQL
-- Microsoft Foundry 모델 리소스
-- Log Analytics Workspace / Azure Monitor
-- System-assigned Managed Identity
+| Aspire 리소스 | Azure 리소스 |
+|---|---|
+| `cae` | Container Apps Environment + ACR + Log Analytics |
+| `api` | Container App (외부 ingress, 포트 8000) |
+| `ingest` | **Container Apps Job (Schedule 트리거)** |
+| `cosmos` | Cosmos DB for NoSQL (`benefits`, `sessions`, `plans`, `heartLedger`) |
+| `archive` | Storage 계정 + `raw-benefits` Blob 컨테이너 |
+| `foundry` | Foundry 모델 리소스 + `chat` 배포 |
+
+### 예약 수집 작업
+
+`ingest`는 `api`와 **동일한 이미지**를 쓰고 명령만 `python -m app.ingestion`으로 바꾼다. 코드가 갈라질 수 없다.
+
+```csharp
+.PublishAsScheduledAzureContainerAppJob(ingestCron, (infra, job) =>
+{
+    job.Configuration.ReplicaTimeout = 1800;
+    job.Configuration.ReplicaRetryLimit = 1;
+});
+```
+
+기본 cron은 `0 18 * * *`(UTC) = 03:00 KST이며 AppHost 구성 `IngestCron`으로 바꾼다.
 
 ### 권장 Container Apps 설정
 
@@ -647,11 +682,14 @@ AI 모델의 일시적 지연이나 rate limit은 `/status/ai`에만 반영하�
 
 ### Managed Identity 역할
 
-- Foundry 모델 호출 역할
-- Cosmos DB Built-in Data Contributor
-- 필요 시 ACR Pull
+Aspire는 리소스마다 **user-assigned managed identity**를 만들고 `AZURE_CLIENT_ID`를 주입한다. `DefaultAzureCredential`이 이를 그대로 사용한다.
 
-관리자 권한이나 구독 전체 Contributor를 앱에 주지 않는다.
+| 리소스 | Cosmos | Storage | Foundry |
+|---|---|---|---|
+| `api` | Data Contributor | Blob Data **Reader** | OpenAI User |
+| `ingest` | Data Contributor | Blob Data **Contributor** | OpenAI User |
+
+API는 원본 아카이브에 쓰지 못한다. 관리자 권한이나 구독 전체 Contributor를 어느 쪽에도 주지 않는다.
 
 ## 17. 빌드 및 배포
 
@@ -697,23 +735,41 @@ ENV COPILOT_SKIP_CLI_DOWNLOAD=1
 
 ### 17.3 반복 가능한 Azure 배포
 
-저장소에 `azure.yaml`, `infra/main.bicep`, `Dockerfile`을 커밋한다.
+저장소에 `azure.yaml`, `infra/DidimHeart.AppHost/`, `Dockerfile`을 커밋한다. Bicep은 커밋하지 않고 `azd`가 AppHost에서 생성한다.
 
 ```powershell
 azd auth login
 azd env new didimheart-hackathon
+azd env set AZURE_LOCATION koreacentral
 azd up
 ```
 
-`azd up`은 다음을 수행해야 한다.
+`azd up`은 다음을 수행한다.
 
-1. Azure 리소스 프로비저닝
-2. Managed Identity와 역할 할당
-3. 프런트엔드 빌드
-4. 컨테이너 이미지 빌드·푸시
-5. Container App 배포
-6. `FOUNDRY_RESOURCE_URL`, `FOUNDRY_MODEL`, `COSMOS_ENDPOINT` 설정
-7. Azure 원본 배포 URL 출력
+1. AppHost를 Bicep으로 변환해 Azure 리소스 프로비저닝
+2. 리소스별 managed identity와 역할 할당 생성
+3. 컨테이너 이미지 빌드·푸시(프런트엔드 빌드는 Dockerfile 1단계에서 수행)
+4. Container App과 예약 수집 작업 배포
+5. `COSMOS_ENDPOINT`, `FOUNDRY_RESOURCE_URL`, `FOUNDRY_MODEL`, `INGEST_ARCHIVE_ACCOUNT_URL` 주입
+6. Azure 원본 배포 URL 출력
+
+생성될 Bicep을 미리 확인하려면:
+
+```powershell
+azd infra synth
+```
+
+수집 작업을 스케줄과 무관하게 즉시 한 번 실행하려면:
+
+```powershell
+az containerapp job start --name ingest --resource-group <rg>
+```
+
+온통청년 API 키는 secret 파라미터로 주입한다. 키가 없으면 수집기는 저장소 스냅샷으로 자동 폴백한다.
+
+```powershell
+azd env set AZURE_YOUTHCENTERAPIKEY <key>
+```
 
 ### 17.4 긴급 단일 명령 배포
 
