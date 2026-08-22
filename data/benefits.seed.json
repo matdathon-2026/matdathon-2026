@@ -1,0 +1,338 @@
+[
+  {
+    "id": "self-reliance-allowance",
+    "title": "자립수당",
+    "provider": "보건복지부",
+    "category": "living",
+    "regions": ["ALL"],
+    "age": { "min": 18, "max": null },
+    "eligibilityText": "아동복지시설 또는 가정위탁 보호를 받다가 보호가 종료된 자립준비청년으로, 보호종료 후 5년 이내인 사람을 지원 대상으로 합니다.",
+    "benefitText": "매월 일정액의 자립수당을 현금으로 지급해 보호종료 직후 안정적인 생활을 돕습니다. 지급액과 기간은 매년 정책에 따라 변동될 수 있습니다.",
+    "applicationSteps": [
+      "주소지 관할 읍·면·동 행정복지센터 방문 또는 복지로에서 신청",
+      "보호종료 확인 및 대상자 자격 확인",
+      "계좌 등록 후 매월 수당 지급"
+    ],
+    "requiredDocuments": ["신분증", "보호종료 확인 서류", "본인 명의 통장 사본"],
+    "deadline": null,
+    "sourceUrl": "https://www.bokjiro.go.kr",
+    "sourceAgency": "보건복지부",
+    "verifiedAt": "2026-08-22",
+    "status": "active"
+  },
+  {
+    "id": "self-reliance-settlement-money",
+    "title": "자립정착금",
+    "provider": "지방자치단체",
+    "category": "living",
+    "regions": ["ALL"],
+    "age": { "min": 18, "max": null },
+    "eligibilityText": "보호종료로 시설·위탁가정에서 퇴소하는 자립준비청년에게 지자체가 지급하는 초기 정착 지원금입니다. 금액은 지자체별로 다릅니다.",
+    "benefitText": "보호종료 시 주거 마련, 생활용품 구입 등 초기 정착 비용을 일시금으로 지원합니다. 지급 규모는 거주 지자체 기준을 따릅니다.",
+    "applicationSteps": [
+      "보호종료 전 담당 시설·자립지원전담기관과 상담",
+      "관할 지자체(시·군·구) 아동복지 담당 부서에 신청",
+      "지급 결정 후 계좌로 정착금 지급"
+    ],
+    "requiredDocuments": ["신분증", "보호종료(예정) 확인 서류", "통장 사본"],
+    "deadline": null,
+    "sourceUrl": "https://www.ncrc.or.kr",
+    "sourceAgency": "아동권리보장원",
+    "verifiedAt": "2026-08-22",
+    "status": "active"
+  },
+  {
+    "id": "cda-didimseed",
+    "title": "디딤씨앗통장(아동발달지원계좌, CDA)",
+    "provider": "보건복지부",
+    "category": "finance",
+    "regions": ["ALL"],
+    "age": { "min": 18, "max": 24 },
+    "eligibilityText": "보호대상아동 등이 저축하면 국가가 일정 비율로 매칭 적립해 주는 자산형성 통장입니다. 보호종료 후에도 적립금 사용이 가능합니다.",
+    "benefitText": "아동 본인 적립액에 대해 정부가 1:2 범위 내에서 매칭 지원하며, 만기 적립금은 학자금·주거·창업 등 자립 용도로 사용할 수 있습니다.",
+    "applicationSteps": [
+      "아동자산형성지원 누리집 또는 관할 지자체에서 가입 상태 확인",
+      "본인 적립(후원) 계좌로 매월 저축",
+      "사용 시점에 자립 용도 증빙 후 인출 신청"
+    ],
+    "requiredDocuments": ["신분증", "본인 명의 통장", "용도 증빙 서류(인출 시)"],
+    "deadline": null,
+    "sourceUrl": "https://www.adongcda.or.kr",
+    "sourceAgency": "아동권리보장원",
+    "verifiedAt": "2026-08-22",
+    "status": "active"
+  },
+  {
+    "id": "lh-jeonse-rental",
+    "title": "LH 청년 전세임대주택",
+    "provider": "한국토지주택공사(LH)",
+    "category": "housing",
+    "regions": ["ALL"],
+    "age": { "min": 19, "max": 39 },
+    "eligibilityText": "무주택 청년 및 자립준비청년(보호종료아동)을 대상으로 LH가 주택을 전세로 계약하고 저렴하게 재임대하는 제도입니다. 자립준비청년은 우선 지원 대상입니다.",
+    "benefitText": "입주자가 원하는 주택을 LH가 전세계약 후 재임대하며, 보증금 대부분을 LH가 지원하고 입주자는 소액 보증금과 저리 임대료만 부담합니다.",
+    "applicationSteps": [
+      "LH청약플러스에서 입주 자격 및 모집 공고 확인",
+      "온라인 또는 방문으로 입주 신청",
+      "대상자 선정 후 희망 주택 물색 및 전세계약 진행"
+    ],
+    "requiredDocuments": ["신분증", "무주택 확인 서류", "보호종료 확인 서류(우선순위 적용 시)"],
+    "deadline": null,
+    "sourceUrl": "https://www.lh.or.kr",
+    "sourceAgency": "한국토지주택공사",
+    "verifiedAt": "2026-08-22",
+    "status": "active"
+  },
+  {
+    "id": "youth-monthly-rent",
+    "title": "청년월세 특별지원",
+    "provider": "국토교통부",
+    "category": "housing",
+    "regions": ["ALL"],
+    "age": { "min": 19, "max": 34 },
+    "eligibilityText": "부모와 따로 거주하는 무주택 청년 중 소득·재산 기준을 충족하는 사람에게 월세 일부를 지원합니다. 자세한 소득 기준은 공고를 확인해야 합니다.",
+    "benefitText": "매월 월세의 일부를 최대 12개월간 지원합니다. 지원 한도와 기간은 사업 연도별로 변동될 수 있습니다.",
+    "applicationSteps": [
+      "복지로 또는 마이홈포털에서 자격 모의계산 확인",
+      "복지로 온라인 또는 주소지 행정복지센터에서 신청",
+      "심사 후 월세 지원금 계좌 지급"
+    ],
+    "requiredDocuments": ["임대차계약서", "월세 이체 증빙", "가족관계 서류", "통장 사본"],
+    "deadline": null,
+    "sourceUrl": "https://www.myhome.go.kr",
+    "sourceAgency": "국토교통부",
+    "verifiedAt": "2026-08-22",
+    "status": "active"
+  },
+  {
+    "id": "national-employment-support",
+    "title": "국민취업지원제도",
+    "provider": "고용노동부",
+    "category": "employment",
+    "regions": ["ALL"],
+    "age": { "min": 15, "max": 69 },
+    "eligibilityText": "취업을 원하는 저소득 구직자·청년 등에게 취업지원서비스와 구직촉진수당을 제공합니다. 자립준비청년은 소득요건 완화 등 우대를 받을 수 있습니다.",
+    "benefitText": "1유형은 구직촉진수당(월 단위)과 취업지원서비스를, 2유형은 취업활동비용과 서비스를 제공합니다. 지급액은 유형·연도별로 다릅니다.",
+    "applicationSteps": [
+      "취업24(고용24) 누리집에서 온라인 신청",
+      "관할 고용센터 상담 및 취업활동계획 수립",
+      "구직활동 이행에 따라 수당·서비스 지원"
+    ],
+    "requiredDocuments": ["신분증", "소득·재산 확인 서류", "구직활동 관련 서류"],
+    "deadline": null,
+    "sourceUrl": "https://www.work24.go.kr",
+    "sourceAgency": "고용노동부",
+    "verifiedAt": "2026-08-22",
+    "status": "active"
+  },
+  {
+    "id": "self-reliance-psychological-support",
+    "title": "자립준비청년 심리·정서 지원",
+    "provider": "아동권리보장원",
+    "category": "mental_health",
+    "regions": ["ALL"],
+    "age": { "min": 18, "max": 34 },
+    "eligibilityText": "보호종료를 앞두었거나 보호가 종료된 자립준비청년을 대상으로 전문 심리상담과 정서지원 프로그램을 제공합니다.",
+    "benefitText": "자립지원전담기관 및 전담인력을 통해 개별 상담, 심리검사, 정서지원 프로그램 연계를 제공합니다. 비용은 사업 범위 내에서 지원됩니다.",
+    "applicationSteps": [
+      "자립정보 포털 또는 관할 자립지원전담기관에 문의",
+      "전담인력과 초기 상담 진행",
+      "필요에 따라 전문 심리상담·프로그램 연계"
+    ],
+    "requiredDocuments": ["신분증", "보호종료(예정) 확인 서류"],
+    "deadline": null,
+    "sourceUrl": "https://www.ncrc.or.kr",
+    "sourceAgency": "아동권리보장원",
+    "verifiedAt": "2026-08-22",
+    "status": "active"
+  },
+  {
+    "id": "youth-tomorrow-saving-account",
+    "title": "청년내일저축계좌",
+    "provider": "보건복지부",
+    "category": "finance",
+    "regions": ["ALL"],
+    "age": { "min": 19, "max": 34 },
+    "eligibilityText": "근로 중인 저소득 청년이 매월 저축하면 정부가 매칭 적립해 주는 자산형성 상품입니다. 소득·가구 요건을 충족해야 합니다.",
+    "benefitText": "본인이 매월 저축하면 정부가 근로소득장려금을 매칭 적립하며, 3년 만기 유지 시 적립금과 이자를 받을 수 있습니다.",
+    "applicationSteps": [
+      "복지로 또는 행정복지센터에서 가입 요건 확인",
+      "지정 모집기간에 신청 및 자격 심사",
+      "매월 저축 및 만기까지 계좌 유지"
+    ],
+    "requiredDocuments": ["신분증", "근로·소득 증빙", "가구 소득·재산 확인 서류", "통장 사본"],
+    "deadline": null,
+    "sourceUrl": "https://www.bokjiro.go.kr",
+    "sourceAgency": "보건복지부",
+    "verifiedAt": "2026-08-22",
+    "status": "active"
+  },
+  {
+    "id": "youth-leap-account",
+    "title": "청년도약계좌",
+    "provider": "금융위원회·서민금융진흥원",
+    "category": "finance",
+    "regions": ["ALL"],
+    "age": { "min": 19, "max": 34 },
+    "eligibilityText": "일정 소득요건을 갖춘 청년이 가입해 매월 납입하면 정부기여금과 비과세 혜택을 받는 중장기 자산형성 계좌입니다.",
+    "benefitText": "매월 납입액에 대해 정부기여금을 지원하고 이자소득 비과세 혜택을 제공합니다. 5년 만기 유지 시 목돈 마련이 가능합니다.",
+    "applicationSteps": [
+      "취급 은행 앱에서 가입 요건 및 일정 확인",
+      "가입 신청 및 소득요건 심사",
+      "매월 자유납입하며 계좌 유지"
+    ],
+    "requiredDocuments": ["신분증", "소득 확인(국세청 연계)", "은행 계좌"],
+    "deadline": null,
+    "sourceUrl": "https://www.kinfa.or.kr",
+    "sourceAgency": "서민금융진흥원",
+    "verifiedAt": "2026-08-22",
+    "status": "active"
+  },
+  {
+    "id": "housing-stability-monthly-loan",
+    "title": "주거안정월세대출",
+    "provider": "주택도시기금",
+    "category": "housing",
+    "regions": ["ALL"],
+    "age": { "min": 19, "max": 34 },
+    "eligibilityText": "무주택 청년·취업준비생 등에게 월세 자금을 저리로 대출해 주는 주택도시기금 상품입니다. 소득 기준을 확인해야 합니다.",
+    "benefitText": "매월 일정 한도의 월세 자금을 낮은 금리로 대출합니다. 우대형·일반형에 따라 금리와 한도가 다릅니다.",
+    "applicationSteps": [
+      "주택도시기금 누리집에서 대출 자격 확인",
+      "기금 수탁은행 방문 또는 기금e든든에서 신청",
+      "심사 후 대출 실행 및 월세 납입"
+    ],
+    "requiredDocuments": ["임대차계약서", "소득 증빙", "신분증", "확정일자 서류"],
+    "deadline": null,
+    "sourceUrl": "https://nhuf.molit.go.kr",
+    "sourceAgency": "국토교통부·주택도시기금",
+    "verifiedAt": "2026-08-22",
+    "status": "active"
+  },
+  {
+    "id": "self-reliance-medical-support",
+    "title": "자립준비청년 의료비 지원",
+    "provider": "보건복지부",
+    "category": "living",
+    "regions": ["ALL"],
+    "age": { "min": 18, "max": 24 },
+    "eligibilityText": "보호종료된 자립준비청년이 의료급여 2종 수준의 의료비 지원을 받을 수 있도록 지원하는 제도입니다. 대상 기간은 정책에 따릅니다.",
+    "benefitText": "보호종료 후 일정 기간 동안 병·의원 이용 시 본인부담 의료비를 경감받을 수 있습니다. 구체적 범위는 관할 기관 안내를 따릅니다.",
+    "applicationSteps": [
+      "주소지 행정복지센터 또는 자립지원전담기관에 문의",
+      "의료급여 대상 자격 확인 신청",
+      "자격 결정 후 의료기관 이용"
+    ],
+    "requiredDocuments": ["신분증", "보호종료 확인 서류"],
+    "deadline": null,
+    "sourceUrl": "https://www.mohw.go.kr",
+    "sourceAgency": "보건복지부",
+    "verifiedAt": "2026-08-22",
+    "status": "active"
+  },
+  {
+    "id": "national-tomorrow-learning-card",
+    "title": "국민내일배움카드",
+    "provider": "고용노동부",
+    "category": "education",
+    "regions": ["ALL"],
+    "age": { "min": 15, "max": 69 },
+    "eligibilityText": "직업훈련이 필요한 국민에게 훈련비를 지원하는 카드로, 재직·구직 여부와 무관하게 다양한 직업훈련 과정을 수강할 수 있습니다.",
+    "benefitText": "일정 한도의 훈련비를 지원하며, 자부담 비율은 과정과 소득에 따라 달라집니다. 자립준비청년 등 취약계층은 우대될 수 있습니다.",
+    "applicationSteps": [
+      "취업24(고용24) 또는 고용센터에서 카드 발급 신청",
+      "직업훈련포털(HRD-Net)에서 훈련과정 검색·수강신청",
+      "훈련 수강 및 출결 관리"
+    ],
+    "requiredDocuments": ["신분증", "카드 발급 신청서"],
+    "deadline": null,
+    "sourceUrl": "https://www.hrd.go.kr",
+    "sourceAgency": "고용노동부",
+    "verifiedAt": "2026-08-22",
+    "status": "active"
+  },
+  {
+    "id": "youth-mind-health-support",
+    "title": "청년 마음건강 지원사업",
+    "provider": "보건복지부",
+    "category": "mental_health",
+    "regions": ["ALL"],
+    "age": { "min": 19, "max": 34 },
+    "eligibilityText": "정서적 어려움을 겪는 청년에게 전문 심리상담 서비스를 제공하는 사업입니다. 소득 기준 없이 신청할 수 있는 경우가 많으나 공고를 확인해야 합니다.",
+    "benefitText": "전문 상담사와의 1:1 심리상담을 여러 회기에 걸쳐 바우처 형태로 지원합니다. 자부담은 소득 구간에 따라 달라질 수 있습니다.",
+    "applicationSteps": [
+      "복지로 또는 주소지 행정복지센터에서 신청",
+      "대상자 선정 및 바우처 발급",
+      "제공기관에서 심리상담 이용"
+    ],
+    "requiredDocuments": ["신분증", "신청서", "(해당 시)소득 확인 서류"],
+    "deadline": null,
+    "sourceUrl": "https://www.bokjiro.go.kr",
+    "sourceAgency": "보건복지부",
+    "verifiedAt": "2026-08-22",
+    "status": "active"
+  },
+  {
+    "id": "buttress-jeonse-loan",
+    "title": "청년전용 버팀목 전세자금대출",
+    "provider": "주택도시기금",
+    "category": "housing",
+    "regions": ["ALL"],
+    "age": { "min": 19, "max": 34 },
+    "eligibilityText": "무주택 청년에게 전세보증금을 저리로 대출해 주는 주택도시기금 상품입니다. 소득·보증금 한도 기준을 충족해야 합니다.",
+    "benefitText": "전세보증금의 상당 부분을 낮은 금리로 대출하며, 대출 한도와 금리는 보증금·소득에 따라 결정됩니다.",
+    "applicationSteps": [
+      "주택도시기금 누리집에서 대출 조건 확인",
+      "기금e든든 또는 수탁은행에서 신청",
+      "심사·보증 후 대출 실행"
+    ],
+    "requiredDocuments": ["임대차계약서", "소득 증빙", "신분증", "보증 관련 서류"],
+    "deadline": null,
+    "sourceUrl": "https://nhuf.molit.go.kr",
+    "sourceAgency": "국토교통부·주택도시기금",
+    "verifiedAt": "2026-08-22",
+    "status": "active"
+  },
+  {
+    "id": "seoul-youth-allowance",
+    "title": "서울 청년수당",
+    "provider": "서울특별시",
+    "category": "employment",
+    "regions": ["seoul"],
+    "age": { "min": 19, "max": 34 },
+    "eligibilityText": "서울에 거주하는 미취업·단기근로 청년에게 구직활동을 지원하는 수당입니다. 소득 기준과 모집 인원이 있어 공고 확인이 필요합니다.",
+    "benefitText": "일정 기간 동안 매월 활동지원금을 지급하고 진로·취업 프로그램을 연계합니다. 지급액과 기간은 연도별 공고를 따릅니다.",
+    "applicationSteps": [
+      "청년몽땅정보통에서 모집 공고 확인",
+      "온라인 신청 및 자격 심사",
+      "선정 후 매월 활동지원금 지급"
+    ],
+    "requiredDocuments": ["신분증", "서울 거주 확인", "소득 확인 서류"],
+    "deadline": null,
+    "sourceUrl": "https://youth.seoul.go.kr",
+    "sourceAgency": "서울특별시",
+    "verifiedAt": "2026-08-22",
+    "status": "active"
+  },
+  {
+    "id": "jaripon-portal",
+    "title": "자립정보ON 자립준비청년 통합정보",
+    "provider": "아동권리보장원",
+    "category": "living",
+    "regions": ["ALL"],
+    "age": { "min": 18, "max": 34 },
+    "eligibilityText": "자립준비청년이 주거·취업·금융·심리 등 흩어진 지원제도를 한 곳에서 찾아볼 수 있도록 정보를 통합 제공하는 공식 포털입니다.",
+    "benefitText": "지원제도 안내, 자립지원전담기관 연계, 자립수당·정착금 등 신청 경로 정보를 제공합니다. 개별 상담 연계도 가능합니다.",
+    "applicationSteps": [
+      "자립정보 포털 접속",
+      "관심 분야별 지원제도 검색",
+      "필요 시 자립지원전담기관 상담 연계"
+    ],
+    "requiredDocuments": ["별도 서류 없음(정보 조회)"],
+    "deadline": null,
+    "sourceUrl": "https://www.ncrc.or.kr",
+    "sourceAgency": "아동권리보장원",
+    "verifiedAt": "2026-08-22",
+    "status": "active"
+  }
+]
