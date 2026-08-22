@@ -5,6 +5,9 @@ pydantic-settings==2.7.0
 httpx==0.28.1
 
 azure-identity==1.19.0
+# azure.identity.aio needs an async transport; without it DefaultAzureCredential
+# fails at import time and the app silently falls back to rule-based mode.
+aiohttp==3.11.11
 azure-cosmos==4.9.0
 azure-storage-blob==12.24.0
 

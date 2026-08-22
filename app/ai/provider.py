@@ -12,7 +12,7 @@ from azure.identity.aio import DefaultAzureCredential
 
 from app.settings import Settings
 
-FOUNDRY_SCOPE = "https://ai.azure.com/.default"
+FOUNDRY_SCOPE = "https://cognitiveservices.azure.com/.default"
 
 
 def build_foundry_provider(settings: Settings) -> Any:
